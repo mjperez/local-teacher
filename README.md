@@ -9,9 +9,9 @@ Sistema básico de RAG (Retrieval-Augmented Generation) modular para procesar do
 pip install -r requirements.txt
 ```
 
-2. Levanta la base de datos vectorial (Qdrant) con Docker:
+2. Levanta la base de datos vectorial (Qdrant) con Docker Compose:
 ```bash
-docker run -p 6333:6333 -p 6334:6334 -v qdrant_storage:/qdrant/storage:z qdrant/qdrant
+docker compose up -d
 ```
 
 *(Opcional: configura un archivo `.env` en la raíz con tus variables como `OPENAI_API_KEY` u `OLLAMA_HOST` si es necesario).*
