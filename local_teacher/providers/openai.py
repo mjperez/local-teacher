@@ -1,2 +1,9 @@
-# Nota: aquí irá el proveedor API externa, por ejemplo OpenAI.
-# Nota: el objetivo es poder cambiar de local a API con configuración, no con cambios de arquitectura.
+from typing import Tuple
+from langchain_core.embeddings import Embeddings
+from langchain_core.language_models.chat_models import BaseChatModel
+from .base import LLMProvider
+
+class OpenAIProvider(LLMProvider):
+    def get_models(self) -> Tuple[BaseChatModel, Embeddings]:
+        from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+        return ChatOpenAI(model="gpt-3.5-turbo", temperature=0), OpenAIEmbeddings()

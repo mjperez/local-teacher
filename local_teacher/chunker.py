@@ -1,3 +1,11 @@
-# Nota: aquí va la fragmentación del texto en chunks pequeños con solapamiento.
-# Nota: esta capa debe ser simple y predecible para el MVP.
-# Nota: el objetivo es maximizar recuperación útil, no optimizar para producción todavía.
+from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+
+def dividir_texto(documentos: list[Document], chunk_size: int = 1000, chunk_overlap: int = 200) -> list[Document]:
+    if not documentos:
+        return []
+    splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
+        chunk_size=chunk_size, chunk_overlap=chunk_overlap
+    )
+    return splitter.split_documents(documentos)

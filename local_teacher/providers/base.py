@@ -1,2 +1,9 @@
-# Nota: aquí van las interfaces compartidas para embeddings y chat.
-# Nota: ambas implementaciones, local y API, deben respetar este contrato.
+from typing import Tuple
+from abc import ABC, abstractmethod
+from langchain_core.embeddings import Embeddings
+from langchain_core.language_models.chat_models import BaseChatModel
+
+class LLMProvider(ABC):
+    @abstractmethod
+    def get_models(self) -> Tuple[BaseChatModel, Embeddings]:
+        pass
