@@ -1,9 +1,7 @@
 from typing import Any
 
 from langchain_classic.chains import create_retrieval_chain
-from langchain_classic.chains.combine_documents import (
-    create_stuff_documents_chain,  # type: ignore
-)
+from langchain_classic.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_qdrant import QdrantVectorStore
@@ -13,7 +11,11 @@ def ejecutar_query(vectorstore: QdrantVectorStore, llm: BaseChatModel, query: st
     retriever = vectorstore.as_retriever(search_kwargs={"k": 3})
 
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "Contexto estricto: {context}\nSi no está en el contexto, responde 'Contexto insuficiente'."),
+        (
+            "system",
+            "Responde solo con la información presente en el contexto. "
+            "Si no está en el contexto, responde exactamente: 'No poseo información suficiente'.",
+        ),
         ("human", "{input}"),
     ])
 

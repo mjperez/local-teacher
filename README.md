@@ -1,43 +1,59 @@
 # Local Teacher
 
-Sistema básico de RAG (Retrieval-Augmented Generation) modular para procesar documentos (.txt, .md, .jsonl) y realizar consultas utilizando modelos locales (Ollama) o APIs (OpenAI). Proyecto de aprendizaje.
+Sistema básico de RAG (Retrieval-Augmented Generation) para procesar documentos (`.txt`, `.md`, `.jsonl`, `.pdf`) y hacer consultas con modelos locales (Ollama) o APIs (OpenAI). Proyecto de aprendizaje.
 
 ## Instalación
 
-1. Instala las dependencias:
+> Requiere **Python 3.11**.
+
+Instala las dependencias:
+
 ```bash
 pip install -r requirements.txt
 ```
 
-2. Levanta la base de datos vectorial (Qdrant) con Docker Compose:
+Levanta Qdrant con Docker Compose:
+
 ```bash
 docker compose up -d
 ```
 
-*(Opcional: configura un archivo `.env` en la raíz con tus variables como `OPENAI_API_KEY` u `OLLAMA_HOST` si es necesario).*
+> Opcional: crea un `.env` en la raíz con `OPENAI_API_KEY`, `OLLAMA_HOST` o `QDRANT_URL`.
 
 ## Uso
 
-El script principal es `cli.py`.
+Ejecuta el CLI con `python -m local_teacher.cli`.
 
 ### Ingestar documentos y hacer una consulta
 
-Usando Ollama (requiere descargar los modelos antes, ej. `ollama pull nomic-embed-text`):
+Con Ollama (primero descarga los modelos, por ejemplo `ollama pull nomic-embed-text`):
+
 ```bash
-python local_teacher/cli.py --ingest test_docs --query "Tu pregunta aquí" --provider ollama --ollama-llm qwen3.5:4b
+python -m local_teacher.cli --ingest test_docs --query "Tu pregunta aquí" --provider ollama --ollama-llm qwen3.5:4b
 ```
 
-Usando OpenAI:
+Con OpenAI:
+
 ```bash
-python local_teacher/cli.py --ingest test_docs --query "Tu pregunta aquí" --provider openai
+python -m local_teacher.cli --ingest test_docs --query "Tu pregunta aquí" --provider openai
+```
+
+### Ingestar PDFs
+
+Los PDFs se procesan con Marker si está instalado (mejor estructura para tablas y diagramas). Si no, se usa PyPDF como fallback.
+
+```bash
+python -m local_teacher.cli --ingest ./docs --query "Tu pregunta aquí" --provider openai
 ```
 
 ### Consultar sin re-ingestar
-Si los documentos ya están en la base de datos, omite el parámetro `--ingest`:
+
+Si los documentos ya están indexados, omite `--ingest`:
+
 ```bash
-python local_teacher/cli.py --query "Tu pregunta aquí" --provider ollama
+python -m local_teacher.cli --query "Tu pregunta aquí" --provider ollama
 ```
 
 ## Roadmap
 
-- [ ] **Modo Tutor (Próximamente)**: Implementación de una capa pedagógica para que el sistema no solo responda de forma directa, sino que actúe como un profesor (con modos de explicación detallada, resúmenes y quizzes).
+- [ ] **Modo Tutor (Próximamente)**: capa pedagógica para responder como profesor (explicaciones, resúmenes y quizzes).
