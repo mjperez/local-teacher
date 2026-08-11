@@ -1,12 +1,29 @@
+import os
 from langchain_core.embeddings import Embeddings
 from langchain_core.language_models.chat_models import BaseChatModel
-from providers.openai import OpenAIProvider
-from providers.ollama import OllamaProvider
 
-def obtener_modelos(provider: str, ollama_llm: str = "llama3", ollama_embed: str = "nomic-embed-text") -> tuple[BaseChatModel, Embeddings]:
+def obtener_modelos(
+    provider: str,
+    ollama_llm: str = "llama3",
+    ollama_embed: str = "nomic-embed-text",
+    ollama_host: str | None = None,
+) -> tuple[BaseChatModel, Embeddings]:
+    """Inicializa y devuelve el LLM y el modelo de embeddings."""
+    provider = provider.lower()
+    
     if provider == "openai":
-        return OpenAIProvider().get_models()
-    elif provider == "ollama":
-        return OllamaProvider(ollama_llm, ollama_embed).get_models()
-    else:
-        raise ValueError(f"[-] Proveedor no soportado: {provider}")
+        from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+        return ChatOpenAI(model="gpt-3.5-turbo", temperature=0), OpenAIEmbeddings()
+        
+    if provider == "ollama":
+        from langchain_ollama import ChatOllama, OllamaEmbeddings
+        raw_host = ollama_host or os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+        host = raw_host.strip('"').strip("'")
+            
+        print(f"[*] Conectando a Ollama en: {host}")
+        return (
+            ChatOllama(model=ollama_llm, temperature=0, base_url=host),
+            OllamaEmbeddings(model=ollama_embed, base_url=host, keep_alive=0),
+        )
+        
+    raise ValueError(f"[-] Proveedor no soportado: {provider}")

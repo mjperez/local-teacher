@@ -1,6 +1,9 @@
 .vscode
-.venv
+.venv*
 __pycache__
-/docs
 .env
-test_docs/
+test*
+.pytest*
+tmp*
+*.log
+*.jsonl

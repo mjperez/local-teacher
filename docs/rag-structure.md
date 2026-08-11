@@ -17,10 +17,7 @@ flowchart TD
   A --> J[retriever.py]
   J --> I
 
-  A --> K[tutor.py]
-  K --> L[prompts.py]
-  K --> J
-  K --> M[providers/base.py]
+  J --> M[providers/base.py]
 
   M --> N[providers/local.py]
   M --> O[providers/ollama.py]
@@ -29,25 +26,30 @@ flowchart TD
   A --> Q[evaluation.py]
 ```
 
-## Lectura rápida
+## Responsabilidades
 
-- `loader.py`: lee archivos elegidos por el usuario.
-- `chunker.py`: divide el texto en fragmentos reutilizables.
-- `storage/qdrant_store.py`: guarda y recupera vectores.
-- `retriever.py`: obtiene el contexto más útil para una consulta.
-- `tutor.py`: arma la respuesta con tono de profesor.
-- `providers/*`: cambian entre modelo local y API externa.
-- `prompts.py`: centraliza instrucciones pedagógicas.
-- `evaluation.py`: prepara quiz, examen y retroalimentación.
-- `logging_utils.py` y `hardware.py`: soporte transversal del sistema.
+- `loader.py`: lee y normaliza archivos; usa Docling como backend PDF principal.
+- `chunker.py`: divide el contenido y conserva metadata.
+- `storage/qdrant_store.py`: persiste y consulta vectores.
+- `retriever.py`: recupera el contexto relevante y **actúa como tutor**, inyectando el contexto recuperado en el prompt y gestionando la generación en *streaming* de las respuestas usando el LLM provisto.
+- `providers/*`: abstraen Ollama y proveedores API opcionales.
+- Metadata: relaciona documento, página, sección, figura y tabla.
+- CLI: expone la ingesta, consulta (con respuestas generadas en tiempo real) y configuración mínima.
+
+## Estado
+
+Actualmente existen loaders, chunker, almacenamiento, recuperación,
+CLI interactivo y proveedores Ollama/OpenAI. El contrato formal de metadata y los proveedores Claude/Gemini están pendientes.
 
 ## Orden recomendado de implementación
 
-1. `loader.py`
-2. `chunker.py`
-3. `storage/qdrant_store.py`
-4. `retriever.py`
-5. `providers/local.py`
-6. `tutor.py`
-7. `evaluation.py`
-8. `app.py` o `cli.py`
+1. Contrato común de metadata.
+2. Loaders de texto y PDF.
+3. Chunker.
+4. Embeddings y almacenamiento Qdrant.
+5. Recuperación.
+6. Tutor.
+7. Proveedores opcionales.
+8. Evaluación y futura interfaz.
+
+
