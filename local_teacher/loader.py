@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any
 
 # Hacer que Docling muestre progreso en la consola
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(message)s")
 logging.getLogger("docling").setLevel(logging.INFO)
 
 from langchain_community.document_loaders import TextLoader

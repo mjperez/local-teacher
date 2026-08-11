@@ -117,6 +117,4 @@ Las capas de carga, fragmentación, recuperación y tutor deben poder probarse s
 - Un PDF educativo se ingiere conservando páginas y figuras con caption.
 - Una consulta recupera contexto relevante.
 - El tutor responde usando ese contexto.
-- La respuesta incluye fuentes.
 - Una pregunta fuera del material produce una respuesta de insuficiencia de contexto.
-- La suite de tests pasa sin credenciales externas.

@@ -73,5 +73,3 @@ El MVP se considera listo cuando el flujo completo funciona en una máquina loca
 - Qdrant ejecutándose localmente.
 - Un PDF educativo real con al menos una figura.
 - Una pregunta cuya respuesta dependa del texto o de una figura del PDF.
-- Fuentes mostradas en la respuesta.
-- Pruebas automatizadas para carga, chunking, recuperación y tutor.

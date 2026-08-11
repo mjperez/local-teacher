@@ -1,11 +1,19 @@
 import argparse
+import logging
 import os
 import sys
+from dotenv import load_dotenv
 
 # Permite ejecutar con "python local_teacher/cli.py" directamente
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from dotenv import load_dotenv
+logging.basicConfig(
+    filename='local_teacher.log', 
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    force=True
+)
+logging.getLogger("httpx").setLevel(logging.WARNING)
 
 from local_teacher.chunker import dividir_texto
 from local_teacher.factory import obtener_modelos
@@ -17,14 +25,6 @@ from local_teacher.storage.qdrant_store import get_qdrant_store
 def main() -> None:
     """Flujo mínimo de RAG: ingestar, indexar y responder."""
     load_dotenv()
-    
-    import logging
-    logging.basicConfig(
-        filename='local_teacher.log', 
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
-    logging.getLogger("httpx").setLevel(logging.WARNING)
 
     parser = argparse.ArgumentParser(description="CLI simple de local-teacher")
     parser.add_argument("--ingest", help="Archivo o directorio a ingerir")

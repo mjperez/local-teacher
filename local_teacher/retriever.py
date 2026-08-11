@@ -25,7 +25,10 @@ def ejecutar_query(vectorstore: QdrantVectorStore, llm: BaseChatModel, query: st
     qa_chain = create_stuff_documents_chain(llm, prompt)
     rag_chain = create_retrieval_chain(retriever, qa_chain)
 
-    if stream:
+    if not stream:
+        return rag_chain.invoke({"input": query})
+
+    def _stream_generator():
         # Recuperamos documentos primero y pasamos al qa_chain para streamear de a tokens
         docs = retriever.invoke(query)
         # qa_chain.stream puede devolver strings o AIMessageChunks dependiendo de la versión de langchain
@@ -37,5 +40,5 @@ def ejecutar_query(vectorstore: QdrantVectorStore, llm: BaseChatModel, query: st
         
         if not has_yielded:
             yield {"answer": "\n[Error: El modelo no devolvió ninguna respuesta (resultado vacío). Verifica la conexión o el modelo.]\n"}
-    else:
-        return rag_chain.invoke({"input": query})
+
+    return _stream_generator()
