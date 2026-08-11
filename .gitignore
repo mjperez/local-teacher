@@ -1,8 +1,9 @@
 .vscode
 .venv*
 __pycache__
-docs/
 .env
-test_docs/
+test*
 .pytest*
-HANDOFF.md
+tmp*
+*.log
+*.jsonl
