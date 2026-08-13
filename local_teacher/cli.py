@@ -20,6 +20,7 @@ from local_teacher.factory import obtener_modelos
 from local_teacher.loader import cargar_archivos
 from local_teacher.retriever import ejecutar_query
 from local_teacher.storage.qdrant_store import get_qdrant_store
+from local_teacher.graph_builder import build_knowledge_graph
 
 
 def main() -> None:
@@ -33,6 +34,8 @@ def main() -> None:
     parser.add_argument("--tablas", action="store_true", help="Extraer tablas a CSV/MD")
     parser.add_argument("--no-formulas", action="store_true", help="Desactivar VLM de Docling")
     parser.add_argument("--recreate", action="store_true", help="Recrear colección Qdrant")
+    parser.add_argument("--graph", action="store_true", help="Extraer y construir Grafo de Conocimiento (GraphRAG)")
+    parser.add_argument("--web-fallback", action="store_true", help="Permitir consultar la web si la respuesta no está en los documentos locales")
     
     # Modelos
     parser.add_argument("--provider", default=os.getenv("LOCAL_TEACHER_PROVIDER", "ollama"))
@@ -80,6 +83,10 @@ def main() -> None:
             print("[*] Dividiendo texto en fragmentos (chunking)...")
             chunks = dividir_texto(docs)
             
+            if args.graph:
+                print("[*] Construyendo Grafo de Conocimiento (esto puede tomar mucho tiempo)...")
+                build_knowledge_graph(chunks, llm)
+                
             print("[*] Generando embeddings y guardando en Qdrant (esto puede tomar un tiempo)...")
             vectorstore = get_qdrant_store(embeddings, chunks, force_recreate=args.recreate)
             print(f"[+] Ingesta completada ({len(chunks)} fragmentos).")
@@ -88,7 +95,7 @@ def main() -> None:
         print("[*] Conectando a Qdrant...")
         vectorstore = vectorstore or get_qdrant_store(embeddings)
         print("[*] Ejecutando búsqueda y generación...")
-        res = ejecutar_query(vectorstore, llm, args.query, stream=True)
+        res = ejecutar_query(vectorstore, llm, args.query, stream=True, web_fallback=args.web_fallback)
         print("\n--- RESPUESTA ---")
         for chunk in res:
             if "answer" in chunk:
