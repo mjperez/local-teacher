@@ -1,16 +1,19 @@
 import networkx as nx
+import logging
 from pathlib import Path
 from langchain_core.documents import Document
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 
-def build_knowledge_graph(docs: list[Document], llm: BaseChatModel, output_path: str = "conocimiento.graphml"):
+_log = logging.getLogger(__name__)
+
+def build_knowledge_graph(docs: list[Document], llm: BaseChatModel, output_path: Path | str = "conocimiento.graphml"):
     """
     Extrae tripletas (Entidad -> Relación -> Entidad) de los documentos usando el LLM
     y construye un grafo usando NetworkX.
     """
-    print(f"\n[*] Iniciando extracción de Grafo de Conocimiento (GraphRAG) para {len(docs)} fragmentos...")
+    _log.info(f"Iniciando extracción de Grafo de Conocimiento (GraphRAG) para {len(docs)} fragmentos...")
     
     # Prompt optimizado para modelos pequeños (3B) usando formato de texto simple en lugar de JSON
     prompt = ChatPromptTemplate.from_messages([
@@ -34,13 +37,13 @@ def build_knowledge_graph(docs: list[Document], llm: BaseChatModel, output_path:
     
     # Cargar grafo existente si vamos a anexar conocimiento de varios libros
     if Path(output_path).exists():
-        print(f"[*] Cargando grafo existente desde {output_path} para expandirlo...")
-        G = nx.read_graphml(output_path)
+        _log.info(f"Cargando grafo existente desde {output_path} para expandirlo...")
+        G = nx.read_graphml(str(output_path))
     else:
         G = nx.DiGraph()
     
     for i, doc in enumerate(docs):
-        print(f"    - Extrayendo grafo del fragmento {i+1}/{len(docs)}...", end="", flush=True)
+        _log.info(f"Extrayendo grafo del fragmento {i+1}/{len(docs)}...")
         try:
             # Extraer tripletas
             raw_output = chain.invoke({"text": doc.page_content})
@@ -62,25 +65,25 @@ def build_knowledge_graph(docs: list[Document], llm: BaseChatModel, output_path:
                             # Añadir al grafo de NetworkX
                             G.add_edge(origen, destino, relacion=relacion)
                             tripletas_extraidas += 1
-            print(f" Ok ({tripletas_extraidas} tripletas extraídas)")
+            _log.info(f"Ok ({tripletas_extraidas} tripletas extraídas)")
             
             # Guardado incremental cada 20 fragmentos para evitar pérdida de datos en textos grandes
             if (i + 1) % 20 == 0:
-                nx.write_graphml(G, output_path)
-                print(f"      [Guardado incremental: {G.number_of_nodes()} nodos actuales]")
+                nx.write_graphml(G, str(output_path))
+                _log.info(f"Guardado incremental: {G.number_of_nodes()} nodos actuales")
                 
         except Exception as e:
-            print(f" Error: {e}")
+            _log.error(f"Error: {e}")
             
-    print(f"[*] Grafo construido: {G.number_of_nodes()} nodos y {G.number_of_edges()} aristas.")
+    _log.info(f"Grafo construido: {G.number_of_nodes()} nodos y {G.number_of_edges()} aristas.")
     
     # Guardar en disco
-    nx.write_graphml(G, output_path)
-    print(f"[*] Grafo guardado en {output_path}")
+    nx.write_graphml(G, str(output_path))
+    _log.info(f"Grafo guardado en {output_path}")
     return G
 
-def load_knowledge_graph(path: str = "conocimiento.graphml") -> nx.DiGraph:
+def load_knowledge_graph(path: Path | str = "conocimiento.graphml") -> nx.DiGraph:
     """Carga el grafo desde el disco si existe."""
     if Path(path).exists():
-        return nx.read_graphml(path)
+        return nx.read_graphml(str(path))
     return nx.DiGraph()

@@ -21,7 +21,7 @@ def _get_headings(start_index: int, heading_map: list[tuple[int, list[str]]]) ->
     """Calcula a qué encabezados pertenece un fragmento basado en su índice de inicio."""
     if not heading_map:
         return []
-    current_headings = heading_map[0][1]
+    current_headings = []
     for idx, h in heading_map:
         if start_index >= idx:
             current_headings = h
@@ -58,6 +58,7 @@ def dividir_texto(
     )
 
     chunks: list[Document] = []
+    global_chunk_index = 0
     for documento in documentos:
         # Detectar si es markdown puro u otro (ej. tabla exportada o archivo .md)
         tipo = str(documento.metadata.get("tipo_archivo", "")).lower()
@@ -71,8 +72,9 @@ def dividir_texto(
             parte.metadata = {**documento.metadata, **parte.metadata}
             sub_chunks = general_splitter.split_documents([parte])
             
-            for i, chunk in enumerate(sub_chunks):
-                chunk.metadata["chunk_index"] = i
+            for chunk in sub_chunks:
+                chunk.metadata["chunk_index"] = global_chunk_index
+                global_chunk_index += 1
                 
                 # Calcular la página si tenemos el page_map
                 if "page_map" in chunk.metadata and "start_index" in chunk.metadata:

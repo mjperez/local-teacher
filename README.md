@@ -86,12 +86,39 @@ python -m local_teacher.cli \
   --provider openai
 ```
 
+### Opciones completas del CLI
+
+El script principal soporta los siguientes argumentos:
+
+**Operaciones principales:**
+- `--ingest <ruta>`: Archivo o directorio a ingerir.
+- `--query <texto>`: Pregunta a realizar al tutor.
+- `--recreate`: Recrea la colección en Qdrant (útil si los datos están desactualizados).
+- `--graph`: Extrae y construye un Grafo de Conocimiento para usar GraphRAG.
+
+**Extracción y procesamiento:**
+- `--figuras`: Extrae imágenes (PNG).
+- `--tablas`: Extrae tablas (a CSV y Markdown).
+- `--no-formulas`: Desactiva el uso del VLM de Docling para decodificar fórmulas (acelera el proceso).
+
+**Generación y Modelos:**
+- `--web-fallback`: Permite que el sistema consulte a la web (Tavily) si la respuesta no está en el contexto local.
+- `--provider <nombre>`: Proveedor LLM (`ollama`, `openai`, `claude`, `gemini`).
+- `--ollama-llm <modelo>`: Nombre del modelo LLM de Ollama (ej. `llama3.2`).
+- `--ollama-embed <modelo>`: Nombre del modelo de embedding (ej. `nomic-embed-text`).
+- `--ollama-host <url>`: URL del servidor de Ollama.
+
 ## Ingesta programática
 
 ```python
 from local_teacher.loader import cargar_archivos
 
-docs = cargar_archivos("test_docs", extraer_figuras=True, extraer_tablas=True)
+docs = cargar_archivos(
+    "test_docs",
+    extraer_figuras=True,
+    extraer_tablas=True,
+    enriquecer_formulas=True # Por defecto usa el VLM de Docling
+)
 ```
 
 ## Cómo funciona la extracción

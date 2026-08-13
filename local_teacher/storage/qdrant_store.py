@@ -12,7 +12,7 @@ def get_qdrant_store(
 ) -> QdrantVectorStore:
     """Conecta a Qdrant con Búsqueda Híbrida y opcionalmente ingesta documentos."""
     url = qdrant_url or os.getenv("QDRANT_URL", "http://localhost:6333")
-    collection = collection_name or os.getenv("QDRANT_COLLECTION", "test")
+    collection = collection_name or os.getenv("QDRANT_COLLECTION", "local_teacher")
     
     # Inicializar el modelo BM25 (sparse) localmente para búsqueda híbrida exacta
     sparse_embeddings = FastEmbedSparse(model_name="Qdrant/bm25")

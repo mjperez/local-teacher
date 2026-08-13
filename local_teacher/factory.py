@@ -4,7 +4,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 
 def obtener_modelos(
     provider: str,
-    ollama_llm: str = "llama3",
+    ollama_llm: str = "deepseek-r1:8b",
     ollama_embed: str = "nomic-embed-text",
     ollama_host: str | None = None,
 ) -> tuple[BaseChatModel, Embeddings]:

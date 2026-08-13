@@ -6,12 +6,11 @@ import os
 import re
 from pathlib import Path
 from typing import Any
+from langchain_community.document_loaders import TextLoader
+from langchain_core.documents import Document
 
 # Hacer que Docling muestre progreso en la consola
 logging.getLogger("docling").setLevel(logging.INFO)
-
-from langchain_community.document_loaders import TextLoader
-from langchain_core.documents import Document
 
 _log = logging.getLogger(__name__)
 _docling_converters: dict[bool, Any] = {}
@@ -34,6 +33,7 @@ _RE_GARBLED_MATH = re.compile(
 # ---------------------------------------------------------------------------
 # Limpieza de fórmulas
 # ---------------------------------------------------------------------------
+
 
 def _limpiar_formulas(texto: str) -> str:
     """Limpia artefactos de fórmulas mal parseadas por Docling.
@@ -81,13 +81,17 @@ def _limpiar_formulas(texto: str) -> str:
 # Converter Docling (lazy singleton por configuración)
 # ---------------------------------------------------------------------------
 
+
 def _get_docling_converter(enriquecer_formulas: bool, extraer_tablas: bool):
     """Devuelve un DocumentConverter de Docling, creándolo si no existe."""
     key = (enriquecer_formulas, extraer_tablas)
     if key not in _docling_converters:
         from docling.datamodel.base_models import InputFormat
         from docling.datamodel.pipeline_options import PdfPipelineOptions
-        from docling.datamodel.accelerator_options import AcceleratorDevice, AcceleratorOptions
+        from docling.datamodel.accelerator_options import (
+            AcceleratorDevice,
+            AcceleratorOptions,
+        )
         from docling.document_converter import DocumentConverter, PdfFormatOption
 
         opts = PdfPipelineOptions()
@@ -98,11 +102,10 @@ def _get_docling_converter(enriquecer_formulas: bool, extraer_tablas: bool):
         opts.do_table_structure = extraer_tablas
         opts.do_formula_enrichment = enriquecer_formulas
         opts.layout_options.engine_options.compile_model = False
-        
+
         # Forzar el uso de la GPU (CUDA) si está disponible, sino CPU
         opts.accelerator_options = AcceleratorOptions(
-            num_threads=1, 
-            device=AcceleratorDevice.AUTO
+            num_threads=1, device=AcceleratorDevice.AUTO
         )
 
         _docling_converters[key] = DocumentConverter(
@@ -114,6 +117,7 @@ def _get_docling_converter(enriquecer_formulas: bool, extraer_tablas: bool):
 # ---------------------------------------------------------------------------
 # Extracción de figuras y tablas
 # ---------------------------------------------------------------------------
+
 
 def _carpeta_destino(ruta_pdf: Path, carpeta: Path | str | None) -> Path:
     """Resuelve la carpeta donde guardar figuras/tablas de un PDF."""
@@ -157,7 +161,9 @@ def _extraer_figuras(ruta_pdf: Path, doc, destino: Path) -> list[dict]:
         pagina = pic.prov[0].page_no if pic.prov else 0
         ruta = destino / f"fig_p{pagina:03d}_n{i:03d}.png"
         imagen.save(str(ruta), "PNG")
-        figuras.append({"indice": i, "pagina": pagina, "caption": caption, "ruta": str(ruta)})
+        figuras.append(
+            {"indice": i, "pagina": pagina, "caption": caption, "ruta": str(ruta)}
+        )
 
     if figuras:
         try:
@@ -189,13 +195,15 @@ def _extraer_tablas(doc, destino: Path) -> list[dict]:
         if df is not None and not df.empty:
             df.to_csv(base.with_suffix(".csv"), index=False, encoding="utf-8")
 
-        tablas.append({
-            "indice": i,
-            "ruta_markdown": str(base.with_suffix(".md")),
-            "ruta_csv": str(base.with_suffix(".csv")),
-            "filas": len(df) if df is not None else 0,
-            "columnas": len(df.columns) if df is not None else 0,
-        })
+        tablas.append(
+            {
+                "indice": i,
+                "ruta_markdown": str(base.with_suffix(".md")),
+                "ruta_csv": str(base.with_suffix(".csv")),
+                "filas": len(df) if df is not None else 0,
+                "columnas": len(df.columns) if df is not None else 0,
+            }
+        )
 
     return tablas
 
@@ -204,7 +212,10 @@ def _extraer_tablas(doc, destino: Path) -> list[dict]:
 # Conversión a documentos LangChain
 # ---------------------------------------------------------------------------
 
-def _docs_figuras(figuras: list[dict], fuente: Path, curso: str | None = None) -> list[Document]:
+
+def _docs_figuras(
+    figuras: list[dict], fuente: Path, curso: str | None = None
+) -> list[Document]:
     """Convierte figuras exportadas en Documents para el RAG."""
     docs = []
     for fig in figuras:
@@ -217,11 +228,17 @@ def _docs_figuras(figuras: list[dict], fuente: Path, curso: str | None = None) -
         }
         if curso:
             meta["curso"] = curso
-        docs.append(Document(page_content=f"{fig['caption']}\nImagen: {fig['ruta']}", metadata=meta))
+        docs.append(
+            Document(
+                page_content=f"{fig['caption']}\nImagen: {fig['ruta']}", metadata=meta
+            )
+        )
     return docs
 
 
-def _docs_tablas(tablas: list[dict], fuente: Path, curso: str | None = None) -> list[Document]:
+def _docs_tablas(
+    tablas: list[dict], fuente: Path, curso: str | None = None
+) -> list[Document]:
     """Convierte tablas exportadas en Documents para el RAG."""
     docs = []
     for t in tablas:
@@ -232,7 +249,12 @@ def _docs_tablas(tablas: list[dict], fuente: Path, curso: str | None = None) -> 
         }
         if curso:
             meta["curso"] = curso
-        docs.append(Document(page_content=f"Tabla:\n{Path(t['ruta_markdown']).read_text(encoding='utf-8')}", metadata=meta))
+        docs.append(
+            Document(
+                page_content=f"Tabla:\n{Path(t['ruta_markdown']).read_text(encoding='utf-8')}",
+                metadata=meta,
+            )
+        )
     return docs
 
 
@@ -240,12 +262,14 @@ def _docs_tablas(tablas: list[dict], fuente: Path, curso: str | None = None) -> 
 # Cargadores por formato
 # ---------------------------------------------------------------------------
 
+
 def _extraer_titulo_pdf(ruta: Path) -> str | None:
     """Intenta extraer el título interno de los metadatos del PDF.
     Usa pypdf de manera opcional para no romper el código si no está instalado.
     """
     try:
         from pypdf import PdfReader
+
         reader = PdfReader(str(ruta))
         if reader.metadata and reader.metadata.title:
             t = reader.metadata.title.strip()
@@ -263,6 +287,7 @@ def _cargar_pdf(
     extraer_tablas: bool,
     carpeta_figuras,
     enriquecer_formulas: bool = True,
+    curso: str | None = None,
 ) -> list[Document]:
     """Carga un PDF con Docling y devuelve texto, figuras y tablas usando 2 pasadas si hay fórmulas."""
     try:
@@ -271,7 +296,9 @@ def _cargar_pdf(
 
         _log.info("Iniciando pasada rápida de Docling...")
         # 1. Pasada Rápida (sin VLM de fórmulas, tablas solo si extraer_tablas=True)
-        doc_fast = _get_docling_converter(False, extraer_tablas).convert(str(ruta)).document
+        doc_fast = (
+            _get_docling_converter(False, extraer_tablas).convert(str(ruta)).document
+        )
 
         paginas_con_formulas = set()
         if enriquecer_formulas:
@@ -283,10 +310,14 @@ def _cargar_pdf(
 
         chunker = HierarchicalChunker()
         textos_por_pagina = {}
-        
+
         # Agrupar chunks rápidos por página
         for c in chunker.chunk(doc_fast):
-            p = c.meta.doc_items[0].prov[0].page_no if c.meta.doc_items and c.meta.doc_items[0].prov else 1
+            p = (
+                c.meta.doc_items[0].prov[0].page_no
+                if c.meta.doc_items and c.meta.doc_items[0].prov
+                else 1
+            )
             headings = c.meta.headings if hasattr(c.meta, "headings") else []
             if p not in textos_por_pagina:
                 textos_por_pagina[p] = []
@@ -295,8 +326,10 @@ def _cargar_pdf(
         # 2. Pasada Lenta (solo si se encontraron fórmulas y está activado)
         if paginas_con_formulas:
             paginas = sorted(paginas_con_formulas)
-            _log.info(f"Fórmulas detectadas en {len(paginas)} páginas: {paginas}. Ejecutando VLM (esto tomará un tiempo)...")
-            
+            _log.info(
+                f"Fórmulas detectadas en {len(paginas)} páginas: {paginas}. Ejecutando VLM (esto tomará un tiempo)..."
+            )
+
             # Agrupar en rangos continuos
             rangos = []
             inicio = fin = paginas[0]
@@ -311,19 +344,24 @@ def _cargar_pdf(
             converter_vlm = _get_docling_converter(True, extraer_tablas)
             for inicio, fin in rangos:
                 _log.info(f"  -> Procesando VLM para páginas {inicio}-{fin}...")
-                doc_lento = converter_vlm.convert(str(ruta), page_range=(inicio, fin)).document
-                
+                doc_lento = converter_vlm.convert(
+                    str(ruta), page_range=(inicio, fin)
+                ).document
+
                 reemplazados = set()
                 for c in chunker.chunk(doc_lento):
-                    p = c.meta.doc_items[0].prov[0].page_no if c.meta.doc_items and c.meta.doc_items[0].prov else inicio
+                    p = (
+                        c.meta.doc_items[0].prov[0].page_no
+                        if c.meta.doc_items and c.meta.doc_items[0].prov
+                        else inicio
+                    )
                     headings = c.meta.headings if hasattr(c.meta, "headings") else []
                     if p not in reemplazados:
                         textos_por_pagina[p] = []
                         reemplazados.add(p)
                     textos_por_pagina[p].append((c.text, headings))
 
-        # Extraer posible nombre de curso desde la carpeta padre
-        curso = ruta.parent.name if ruta.parent.name not in ("test_docs", "local_teacher") else None
+        # El curso viene inyectado desde la función principal si aplica
 
         # Armar el markdown final, page_map y heading_map
         texto = ""
@@ -335,13 +373,18 @@ def _cargar_pdf(
                 cleaned = _limpiar_formulas(chunk_texto)
                 if not cleaned:
                     continue
-                
+
                 start_idx = len(texto)
                 texto += cleaned + "\n\n"
                 page_map.append((start_idx, p))
                 heading_map.append((start_idx, headings))
-        meta = {"fuente": str(ruta), "tipo_archivo": "pdf", "page_map": page_map, "heading_map": heading_map}
-        
+        meta = {
+            "fuente": str(ruta),
+            "tipo_archivo": "pdf",
+            "page_map": page_map,
+            "heading_map": heading_map,
+        }
+
         # Guardar TOC para el agente
         toc_levels = []
         for _, h in heading_map:
@@ -353,14 +396,14 @@ def _cargar_pdf(
                 toc_path.write_text("\n".join(toc_levels), encoding="utf-8")
             except OSError as exc:
                 _log.warning("No se pudo escribir el TOC %s: %s", toc_path, exc)
-        
+
         titulo = _extraer_titulo_pdf(ruta)
         if titulo:
             meta["titulo"] = titulo
-            
+
         if curso:
             meta["curso"] = curso
-            
+
         docs: list[Document] = []
 
         destino = _carpeta_destino(ruta, carpeta_figuras)
@@ -382,22 +425,25 @@ def _cargar_pdf(
         return []
 
 
-def _cargar_jsonl(ruta: Path) -> list[Document]:
+def _cargar_jsonl(ruta: Path, curso: str | None = None) -> list[Document]:
     """Carga un .jsonl con formato Natural Questions."""
     docs = []
     with open(ruta, "r", encoding="utf-8") as f:
-        curso = ruta.parent.name if ruta.parent.name not in ("test_docs", "local_teacher") else None
         for idx, line in enumerate(f):
             line = line.strip()
             if not line:
                 continue
             data = json.loads(line)
             if "question" in data and "answer" in data:
-                resp = ", ".join(data["answer"]) if isinstance(data["answer"], list) else str(data["answer"])
+                resp = (
+                    ", ".join(data["answer"])
+                    if isinstance(data["answer"], list)
+                    else str(data["answer"])
+                )
                 text = f"Q: {data['question']}\nA: {resp}"
             else:
                 text = json.dumps(data, ensure_ascii=False)
-            
+
             meta = {"fuente": str(ruta), "tipo_archivo": "jsonl"}
             if curso:
                 meta["curso"] = curso
@@ -408,6 +454,7 @@ def _cargar_jsonl(ruta: Path) -> list[Document]:
 # ---------------------------------------------------------------------------
 # API pública
 # ---------------------------------------------------------------------------
+
 
 def cargar_archivos(
     ruta_carpeta: Path | str,
@@ -431,19 +478,48 @@ def cargar_archivos(
         if not item.is_file():
             continue
 
+        curso = None
+        if ruta_carpeta.is_dir():
+            curso = None if item.parent == ruta_carpeta else item.parent.name
+
         ext = item.suffix.lower()
         if ext in (".txt", ".md"):
             tipo = "markdown" if ext == ".md" else "texto"
             docs_cargados = TextLoader(str(item), encoding="utf-8").load()
-            curso = item.parent.name if item.parent.name not in ("test_docs", "local_teacher") else None
             for d in docs_cargados:
                 d.metadata = {"fuente": str(item), "tipo_archivo": tipo}
                 if curso:
                     d.metadata["curso"] = curso
             docs.extend(docs_cargados)
         elif ext == ".pdf":
-            docs.extend(_cargar_pdf(item, extraer_figuras, extraer_tablas, carpeta_figuras, enriquecer_formulas))
+            docs.extend(
+                _cargar_pdf(
+                    item,
+                    extraer_figuras,
+                    extraer_tablas,
+                    carpeta_figuras,
+                    enriquecer_formulas,
+                    curso=curso,
+                )
+            )
         elif ext == ".jsonl":
-            docs.extend(_cargar_jsonl(item))
+            docs.extend(_cargar_jsonl(item, curso=curso))
 
     return docs
+
+
+def guardar_cache_jsonl(docs: list[Document], ruta_original: Path | str) -> None:
+    """Guarda en formato jsonl los documentos procesados para evitar re-parsear PDFs/Markdown pesados."""
+    cache_path = Path(ruta_original).with_suffix(".jsonl")
+    if str(ruta_original).endswith(".jsonl") or cache_path.exists():
+        return
+
+    _log.info(f"Guardando caché en {cache_path}... (por favor espera)")
+    with open(cache_path, "w", encoding="utf-8") as f:
+        for d in docs:
+            json.dump(
+                {"page_content": d.page_content, "metadata": d.metadata},
+                f,
+                ensure_ascii=False,
+            )
+            f.write("\n")
