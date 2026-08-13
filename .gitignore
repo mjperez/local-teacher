@@ -7,3 +7,5 @@ test*
 tmp*
 *.log
 *.jsonl
+*.graphml
+docs\*.txt
