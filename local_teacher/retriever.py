@@ -68,7 +68,7 @@ def _reescribir_consulta(llm: BaseChatModel, consulta: str) -> ConsultaReescrita
                 "system",
                 "Eres un bibliotecario experto. Tu tarea es optimizar la pregunta del estudiante para buscarla en una base de datos vectorial e híbrida.\n"
                 "Reglas:\n"
-                "1. Traduce la consulta al inglés si el material original suele estar en ese idioma.\n"
+                "1. MANTÉN ESTRICTAMENTE el idioma original de la consulta (si está en español, déjala en español).\n"
                 "2. Extrae el número de CAPÍTULO SÓLO si la pregunta es exclusivamente sobre ese capítulo (ej. 'Resume el capítulo 4').\n"
                 "3. Extrae los CONCEPTOS NÚCLEO o NOMBRES PROPIOS de la pregunta, en una lista de strings.",
             ),
@@ -134,13 +134,31 @@ def _recuperar_y_filtrar(
     vectorstore: QdrantVectorStore,
     consulta_optimizada: str,
     capitulo_filtro: Optional[str],
+    entidades_filtro: list[str] = None,
 ) -> list[Document]:
-    """3. Recuperación Vectorial (Retrieve) con Post-Filtrado"""
-    recuperador_masivo = vectorstore.as_retriever(search_kwargs={"k": 800})
-    docs = recuperador_masivo.invoke(consulta_optimizada)
+    """3. Recuperación Vectorial (Retrieve) con Post-Filtrado y Entidades"""
+    docs = []
+    vistos_id = set()
+
+    # Búsqueda independiente de entidades (muy útil para glosarios y conceptos sueltos)
+    if entidades_filtro:
+        for entidad in entidades_filtro:
+            res = vectorstore.similarity_search(entidad, k=30)
+            for d in res:
+                content_hash = hash(d.page_content)
+                if content_hash not in vistos_id:
+                    docs.append(d)
+                    vistos_id.add(content_hash)
+
+    # Búsqueda semántica de la consulta completa
+    res_completa = vectorstore.similarity_search(consulta_optimizada, k=40)
+    for d in res_completa:
+        content_hash = hash(d.page_content)
+        if content_hash not in vistos_id:
+            docs.append(d)
+            vistos_id.add(content_hash)
 
     if capitulo_filtro:
-        # Filtrar documentos cuya ruta_seccion empiece por el número del capítulo
         docs_filtrados = []
         prefix = f"{capitulo_filtro}."
         for d in docs:
@@ -148,46 +166,18 @@ def _recuperar_y_filtrar(
             if ruta.strip().startswith(prefix) or f" {prefix}" in ruta:
                 docs_filtrados.append(d)
 
-        if not docs_filtrados:
-            return docs[:15]
+        if docs_filtrados:
+            docs = docs_filtrados
 
-        # Ordenamos todo el capítulo cronológicamente (asume chunk_index global)
-        docs_ordenados_por_lectura = sorted(
-            docs_filtrados, key=lambda x: x.metadata.get("chunk_index", 999999)
-        )
+    # Re-ranking simple: Priorizar fragmentos que contienen menciones exactas de las entidades
+    if entidades_filtro:
+        def score_doc(d):
+            content = d.page_content.lower()
+            return sum(content.count(e.lower()) for e in entidades_filtro)
+        docs = sorted(docs, key=score_doc, reverse=True)
 
-        seleccion = []
-        vistos = set()
-
-        # 1. Muestreo Uniforme ("Lectura Rápida")
-        if len(docs_ordenados_por_lectura) > 8:
-            step = len(docs_ordenados_por_lectura) / 8.0
-            for i in range(8):
-                idx_to_take = int(i * step)
-                d = docs_ordenados_por_lectura[idx_to_take]
-                idx = d.metadata.get("chunk_index")
-                if idx not in vistos:
-                    seleccion.append(d)
-                    vistos.add(idx)
-        else:
-            for d in docs_ordenados_por_lectura:
-                idx = d.metadata.get("chunk_index")
-                if idx not in vistos:
-                    seleccion.append(d)
-                    vistos.add(idx)
-
-        # 2. Relevancia (Para responder preguntas específicas)
-        for d in docs_filtrados:
-            idx = d.metadata.get("chunk_index")
-            if idx not in vistos:
-                seleccion.append(d)
-                vistos.add(idx)
-            if len(seleccion) >= 15:
-                break
-
-        return sorted(seleccion, key=lambda x: x.metadata.get("chunk_index", 999999))
-
-    return sorted(docs[:15], key=lambda x: x.metadata.get("chunk_index", 999999))
+    # Limitar el número de documentos finales para no inundar el contexto
+    return docs[:20]
 
 
 def _evaluar_borrador(llm: BaseChatModel, texto_contexto: str, borrador: str) -> str:
@@ -211,18 +201,20 @@ def _evaluar_borrador(llm: BaseChatModel, texto_contexto: str, borrador: str) ->
             (
                 "human",
                 "Contexto Original:\n{context}\n\nRespuesta Generada:\n{draft}\n\n"
-                "INSTRUCCIÓN FINAL: Si la respuesta inicia con 'No encontré esta información en los apuntes...', responde APROBADO. "
-                "Si la respuesta inventa datos afirmando que están en el contexto, responde RECHAZADO. "
+                "INSTRUCCIÓN FINAL:\n"
+                "1. Si la respuesta inicia con 'No encontré esta información en los apuntes...', responde APROBADO.\n"
+                "2. Evalúa con flexibilidad: si la respuesta contiene información correcta que parece provenir del contexto (aunque esté parafraseada o resumida), responde APROBADO.\n"
+                "3. Solo responde RECHAZADO si la respuesta inventa datos flagrantemente falsos o contradice el contexto de manera evidente.\n"
                 "¿Aprobado o Rechazado? Escribe SOLO UNA PALABRA:",
             ),
         ]
     )
     cadena_critico = prompt_critico | llm | StrOutputParser()
-    return (
-        cadena_critico.invoke({"context": texto_contexto, "draft": borrador})
-        .strip()
-        .upper()
-    )
+    respuesta = cadena_critico.invoke({"context": texto_contexto, "draft": borrador})
+    respuesta_limpia = re.sub(
+        r"<think>.*?</think>", "", respuesta, flags=re.DOTALL | re.IGNORECASE
+    ).strip()
+    return respuesta_limpia.upper()
 
 
 def ejecutar_consulta(
@@ -340,21 +332,23 @@ def ejecutar_consulta(
                 decision_critico = "RECHAZADO"
             else:
                 _progreso(3, 4, "Crítico evaluando precisión y alucinaciones...")
-                decision_critico = _evaluar_borrador(llm, texto_contexto, borrador)
+                decision_critico = _evaluar_borrador(llm, texto_contexto, borrador_limpio)
 
-            # DEFAULT DENY
-            if "APROBADO" in decision_critico and "RECHAZADO" not in decision_critico:
+            # DEFAULT DENY: Solo aprobamos si vemos APROBADO o APPROVED y NO vemos RECHAZADO o REJECTED
+            es_aprobado = ("APROBADO" in decision_critico or "APPROVED" in decision_critico)
+            es_rechazado = ("RECHAZADO" in decision_critico or "REJECTED" in decision_critico)
+            
+            if es_aprobado and not es_rechazado:
                 _progreso(4, 4, "¡Respuesta Aprobada!", saltar_linea=True)
                 return borrador
             else:
                 _log.info(
-                    f"Crítico rechazó el intento {intento}. Razón: {decision_critico}"
+                    f"Crítico rechazó borrador en intento {intento}. Razón: {decision_critico}"
                 )
                 mensaje_feedback = (
-                    "FEEDBACK DEL EVALUADOR (IMPORTANTE): Tu respuesta anterior fue RECHAZADA por inventar información. "
-                    "Inténtalo de nuevo. Si el usuario pide un resumen y no hay uno oficial en el texto, usa las "
-                    "Conexiones Conceptuales del Grafo y los temas recurrentes para sintetizar un resumen general, "
-                    "pero NO inventes datos duros, cantidades de capítulos ni autores. Si es imposible responder sin inventar, ríndete admitiendo que no lo sabes."
+                    "El revisor indicó que tu respuesta incluía afirmaciones no respaldadas "
+                    "por el texto recuperado. Por favor, sé más estricto y responde SÓLO "
+                    "con la información del contexto."
                 )
                 continue
 
@@ -363,7 +357,7 @@ def ejecutar_consulta(
 
     if not transmitir:
         _progreso(1, 4, "Recuperando documentos...")
-        docs = _recuperar_y_filtrar(vectorstore, consulta_optimizada, capitulo_filtro)
+        docs = _recuperar_y_filtrar(vectorstore, consulta_optimizada, capitulo_filtro, entidades_filtro)
         respuesta_final = _generar_y_evaluar(docs)
         return {"answer": respuesta_final}
 
