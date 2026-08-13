@@ -19,6 +19,10 @@ def obtener_modelos(
         from langchain_ollama import ChatOllama, OllamaEmbeddings
         raw_host = ollama_host or os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434")
         host = raw_host.strip('"').strip("'")
+        
+        if host == "http://0.0.0.0" or host == "0.0.0.0":
+            host = "http://127.0.0.1:11434"
+        
             
         print(f"[*] Conectando a Ollama en: {host}")
         return (

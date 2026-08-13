@@ -204,42 +204,58 @@ def _extraer_tablas(doc, destino: Path) -> list[dict]:
 # Conversión a documentos LangChain
 # ---------------------------------------------------------------------------
 
-def _docs_figuras(figuras: list[dict], fuente: Path) -> list[Document]:
+def _docs_figuras(figuras: list[dict], fuente: Path, curso: str | None = None) -> list[Document]:
     """Convierte figuras exportadas en Documents para el RAG."""
-    return [
-        Document(
-            page_content=f"{fig['caption']}\nImagen: {fig['ruta']}",
-            metadata={
-                "source": str(fuente),
-                "file_type": "figure",
-                "pagina": fig["pagina"],
-                "ruta": fig["ruta"],
-                "caption": fig["caption"],
-            },
-        )
-        for fig in figuras
-    ]
+    docs = []
+    for fig in figuras:
+        meta = {
+            "fuente": str(fuente),
+            "tipo_archivo": "figura",
+            "pagina": fig["pagina"],
+            "ruta_recurso": fig["ruta"],
+            "leyenda": fig["caption"],
+        }
+        if curso:
+            meta["curso"] = curso
+        docs.append(Document(page_content=f"{fig['caption']}\nImagen: {fig['ruta']}", metadata=meta))
+    return docs
 
 
-def _docs_tablas(tablas: list[dict], fuente: Path) -> list[Document]:
+def _docs_tablas(tablas: list[dict], fuente: Path, curso: str | None = None) -> list[Document]:
     """Convierte tablas exportadas en Documents para el RAG."""
-    return [
-        Document(
-            page_content=f"Tabla:\n{Path(t['ruta_markdown']).read_text(encoding='utf-8')}",
-            metadata={
-                "source": str(fuente),
-                "file_type": "table",
-                "ruta_markdown": t["ruta_markdown"],
-                "ruta_csv": t["ruta_csv"],
-            },
-        )
-        for t in tablas
-    ]
+    docs = []
+    for t in tablas:
+        meta = {
+            "fuente": str(fuente),
+            "tipo_archivo": "tabla",
+            "ruta_recurso": t["ruta_markdown"],
+        }
+        if curso:
+            meta["curso"] = curso
+        docs.append(Document(page_content=f"Tabla:\n{Path(t['ruta_markdown']).read_text(encoding='utf-8')}", metadata=meta))
+    return docs
 
 
 # ---------------------------------------------------------------------------
 # Cargadores por formato
 # ---------------------------------------------------------------------------
+
+def _extraer_titulo_pdf(ruta: Path) -> str | None:
+    """Intenta extraer el título interno de los metadatos del PDF.
+    Usa pypdf de manera opcional para no romper el código si no está instalado.
+    """
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(str(ruta))
+        if reader.metadata and reader.metadata.title:
+            t = reader.metadata.title.strip()
+            # A veces los metadatos son basura generada por word/latex
+            if t and not t.lower().startswith("microsoft"):
+                return t
+    except Exception:
+        pass
+    return None
+
 
 def _cargar_pdf(
     ruta: Path,
@@ -271,9 +287,10 @@ def _cargar_pdf(
         # Agrupar chunks rápidos por página
         for c in chunker.chunk(doc_fast):
             p = c.meta.doc_items[0].prov[0].page_no if c.meta.doc_items and c.meta.doc_items[0].prov else 1
+            headings = c.meta.headings if hasattr(c.meta, "headings") else []
             if p not in textos_por_pagina:
                 textos_por_pagina[p] = []
-            textos_por_pagina[p].append(c.text)
+            textos_por_pagina[p].append((c.text, headings))
 
         # 2. Pasada Lenta (solo si se encontraron fórmulas y está activado)
         if paginas_con_formulas:
@@ -299,32 +316,62 @@ def _cargar_pdf(
                 reemplazados = set()
                 for c in chunker.chunk(doc_lento):
                     p = c.meta.doc_items[0].prov[0].page_no if c.meta.doc_items and c.meta.doc_items[0].prov else inicio
+                    headings = c.meta.headings if hasattr(c.meta, "headings") else []
                     if p not in reemplazados:
                         textos_por_pagina[p] = []
                         reemplazados.add(p)
-                    textos_por_pagina[p].append(c.text)
+                    textos_por_pagina[p].append((c.text, headings))
 
-        # Armar el markdown final
+        # Extraer posible nombre de curso desde la carpeta padre
+        curso = ruta.parent.name if ruta.parent.name not in ("test_docs", "local_teacher") else None
+
+        # Armar el markdown final, page_map y heading_map
         texto = ""
+        page_map = []
+        heading_map = []
         for p in sorted(textos_por_pagina.keys()):
-            texto += "\n\n".join(textos_por_pagina[p]) + "\n\n"
+            for chunk_texto, headings in textos_por_pagina[p]:
+                # Limpiamos fórmulas por cada pedacito
+                cleaned = _limpiar_formulas(chunk_texto)
+                if not cleaned:
+                    continue
+                
+                start_idx = len(texto)
+                texto += cleaned + "\n\n"
+                page_map.append((start_idx, p))
+                heading_map.append((start_idx, headings))
+        meta = {"fuente": str(ruta), "tipo_archivo": "pdf", "page_map": page_map, "heading_map": heading_map}
         
-        texto = _limpiar_formulas(texto)
+        # Guardar TOC para el agente
+        toc_levels = []
+        for _, h in heading_map:
+            if h and len(h) > 0 and h[0] not in toc_levels:
+                toc_levels.append(h[0])
+        if toc_levels:
+            try:
+                toc_path = ruta.parent / f"{ruta.stem}_toc.txt"
+                toc_path.write_text("\n".join(toc_levels), encoding="utf-8")
+            except OSError as exc:
+                _log.warning("No se pudo escribir el TOC %s: %s", toc_path, exc)
         
-        meta = {"source": str(ruta), "file_type": "pdf", "backend": "docling"}
+        titulo = _extraer_titulo_pdf(ruta)
+        if titulo:
+            meta["titulo"] = titulo
+            
+        if curso:
+            meta["curso"] = curso
+            
         docs: list[Document] = []
 
         destino = _carpeta_destino(ruta, carpeta_figuras)
 
         if extraer_figuras:
             figs = _extraer_figuras(ruta, doc_fast, destino)
-            meta["figuras"] = figs
-            docs.extend(_docs_figuras(figs, ruta))
+            docs.extend(_docs_figuras(figs, ruta, curso))
 
         if extraer_tablas:
             tabs = _extraer_tablas(doc_fast, destino / "tablas")
-            meta["tablas"] = tabs
-            docs.extend(_docs_tablas(tabs, ruta))
+            docs.extend(_docs_tablas(tabs, ruta, curso))
 
         if texto:
             docs.append(Document(page_content=texto, metadata=meta))
@@ -339,6 +386,7 @@ def _cargar_jsonl(ruta: Path) -> list[Document]:
     """Carga un .jsonl con formato Natural Questions."""
     docs = []
     with open(ruta, "r", encoding="utf-8") as f:
+        curso = ruta.parent.name if ruta.parent.name not in ("test_docs", "local_teacher") else None
         for idx, line in enumerate(f):
             line = line.strip()
             if not line:
@@ -349,7 +397,11 @@ def _cargar_jsonl(ruta: Path) -> list[Document]:
                 text = f"Q: {data['question']}\nA: {resp}"
             else:
                 text = json.dumps(data, ensure_ascii=False)
-            docs.append(Document(page_content=text, metadata={"source": str(ruta), "line": idx}))
+            
+            meta = {"fuente": str(ruta), "tipo_archivo": "jsonl"}
+            if curso:
+                meta["curso"] = curso
+            docs.append(Document(page_content=text, metadata=meta))
     return docs
 
 
@@ -381,7 +433,14 @@ def cargar_archivos(
 
         ext = item.suffix.lower()
         if ext in (".txt", ".md"):
-            docs.extend(TextLoader(str(item), encoding="utf-8").load())
+            tipo = "markdown" if ext == ".md" else "texto"
+            docs_cargados = TextLoader(str(item), encoding="utf-8").load()
+            curso = item.parent.name if item.parent.name not in ("test_docs", "local_teacher") else None
+            for d in docs_cargados:
+                d.metadata = {"fuente": str(item), "tipo_archivo": tipo}
+                if curso:
+                    d.metadata["curso"] = curso
+            docs.extend(docs_cargados)
         elif ext == ".pdf":
             docs.extend(_cargar_pdf(item, extraer_figuras, extraer_tablas, carpeta_figuras, enriquecer_formulas))
         elif ext == ".jsonl":

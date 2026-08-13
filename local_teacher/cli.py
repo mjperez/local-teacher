@@ -56,6 +56,8 @@ def main() -> None:
     vectorstore = None
 
     if args.ingest:
+        print(f"[*] Iniciando carga de documentos desde: {args.ingest}")
+        print("[*] (Si es la primera vez que se procesa un PDF, Docling podría descargar modelos y tardar varios minutos...)")
         docs = cargar_archivos(
             args.ingest,
             extraer_figuras=args.figuras,
@@ -69,13 +71,16 @@ def main() -> None:
             
             # Guardar caché si es la primera vez que procesamos un PDF
             if not str(args.ingest).endswith('.jsonl') and not cache_path.exists():
-                print(f"[*] Guardando caché en {cache_path}...")
+                print(f"[*] Guardando caché en {cache_path}... (por favor espera)")
                 with open(cache_path, "w", encoding="utf-8") as f:
                     for d in docs:
                         json.dump({"page_content": d.page_content, "metadata": d.metadata}, f, ensure_ascii=False)
                         f.write("\n")
                         
+            print("[*] Dividiendo texto en fragmentos (chunking)...")
             chunks = dividir_texto(docs)
+            
+            print("[*] Generando embeddings y guardando en Qdrant (esto puede tomar un tiempo)...")
             vectorstore = get_qdrant_store(embeddings, chunks, force_recreate=args.recreate)
             print(f"[+] Ingesta completada ({len(chunks)} fragmentos).")
 
