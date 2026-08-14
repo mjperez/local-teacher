@@ -6,17 +6,6 @@ El sistema procesa material didáctico estructurado, indexa su contenido en base
 
 ---
 
-## Documentación
-
-- [Guía de Onboarding](docs/onboarding.md)
-- [Explicación Archivo por Archivo (.py)](docs/explicacion_archivos_py.md)
-- [Arquitectura y Referencia Técnica](docs/rag-structure.md)
-- [Alcance del Proyecto](docs/scope.md)
-- [Requisitos del Sistema](docs/requirements.md)
-- [Roadmap](docs/roadmap.md)
-
----
-
 ## Características Principales
 
 - **Procesamiento de Documentos con Docling**: Extracción de texto, tablas en Markdown/CSV y figuras con leyendas desde archivos PDF, DOCX, PPTX, Markdown y JSONL. Normalización de fórmulas matemáticas en dos pasadas.

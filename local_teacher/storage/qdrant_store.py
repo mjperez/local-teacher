@@ -54,7 +54,7 @@ def get_qdrant_store(
     return QdrantVectorStore.from_existing_collection(
         embedding=embeddings,
         sparse_embedding=sparse_embeddings,
-        retrieval_mode=RetrievalMode.DENSE,
+        retrieval_mode=RetrievalMode.HYBRID,
         url=url,
         collection_name=collection,
     )
