@@ -2,11 +2,11 @@
 .venv*
 __pycache__
 .env
-test*
+test_*
 .pytest*
 tmp*
 *.log
 *.jsonl
 *.graphml
-onboarding*
 docs
+.prettierrc

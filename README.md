@@ -1,153 +1,124 @@
 # Local Teacher
 
-Tutor educativo **local-first** basado en RAG (Retrieval-Augmented Generation).
+Tutor educativo local-first basado en RAG (Retrieval-Augmented Generation).
 
-El objetivo es ingerir material educativo, conservar su estructura y permitir
-preguntas sobre el contenido mediante un tutor LLM. El MVP prioriza texto y
-PDFs con figuras y tablas relacionadas con su documento y página.
+El sistema procesa material didáctico estructurado, indexa su contenido en bases vectoriales locales y permite realizar consultas interactivas mediante modelos LLM. El procesamiento se ejecuta en el equipo del usuario sin enviar datos a servicios externos.
 
-El procesamiento, los embeddings y Qdrant funcionan localmente. Ollama es el
-proveedor principal; OpenAI, Claude y Gemini se conectan mediante API keys
-opcionales.
-
-> Audio y vídeo quedan fuera del MVP. Se incorporarán más adelante usando el
-> mismo contrato de documentos y metadatos.
-
-> **Nota:** La interfaz actual es por línea de comandos (CLI) y soporta respuestas generadas en tiempo real (*streaming*), con fórmulas matemáticas optimizadas para lectura en consola de texto plano. Eventualmente se desarrollará una interfaz web.
+---
 
 ## Documentación
 
-- [Alcance](docs/scope.md)
-- [Requisitos](docs/requirements.md)
+- [Guía de Onboarding](docs/onboarding.md)
+- [Explicación Archivo por Archivo (.py)](docs/explicacion_archivos_py.md)
+- [Arquitectura y Referencia Técnica](docs/rag-structure.md)
+- [Alcance del Proyecto](docs/scope.md)
+- [Requisitos del Sistema](docs/requirements.md)
 - [Roadmap](docs/roadmap.md)
-- [Arquitectura](docs/rag-structure.md)
+
+---
+
+## Características Principales
+
+- **Procesamiento de Documentos con Docling**: Extracción de texto, tablas en Markdown/CSV y figuras con leyendas desde archivos PDF, DOCX, PPTX, Markdown y JSONL. Normalización de fórmulas matemáticas en dos pasadas.
+- **Búsqueda Híbrida y Reranking**: Combinación de búsqueda vectorial densa con vectores dispersos BM25 en Qdrant, refinada mediante un reranker local con **FlashRank** (`ms-marco-MiniLM-L-12-v2`).
+- **Control de Fidelidad y Abstención**: Clasificador binario Self-RAG para evitar alucinaciones y umbral de score mínimo para indicar explícitamente cuándo el tema consultado no está en el material.
+- **Grafo de Conocimiento (GraphRAG)**: Extracción de tripletas entidad-relación y enriquecimiento de contexto mediante grafos conceptuales.
+- **Modo Tutor Interactivo**: CLI multi-turno con memoria conversacional para responder dudas de seguimiento y presentación detallada de fuentes citadas.
+- **Optimización de Hardware**: Descarga automática de modelos de embeddings de la memoria tras vectorizar (`keep_alive=0`) y soporte de caché semántico en Redis.
+
+---
 
 ## Requisitos
 
-- Python 3.11+
-- Docker + Docker Compose
-- GPU opcional pero recomendada para Docling y Ollama
+- Python 3.11 o superior
+- Docker y Docker Compose
+- Soporte GPU opcional para acelerar Docling y Ollama
 
-## Instalación
+---
 
-```bash
-pip install -r requirements.txt
-```
+## Instalación y Configuración
 
-Levanta Qdrant, Redis y Ollama:
+1. Instala las dependencias del proyecto:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-```bash
-docker compose up -d
-```
+2. Configura las variables de entorno:
+   ```bash
+   cp .env.example .env
+   ```
 
-> **Nota:** El archivo `docker-compose.yml` incluye un contenedor `ollama-init` que se encargará automáticamente de descargar los modelos `deepseek-r1:8b` y `nomic-embed-text` la primera vez que levantes el entorno. Ya no es necesario ejecutar `ollama pull` manualmente.
+3. Inicia los servicios de infraestructura (Qdrant, Redis y Ollama):
+   ```bash
+   docker compose up -d
+   ```
+   El contenedor `ollama-init` descargará de forma automática los modelos `deepseek-r1:8b` y `nomic-embed-text`.
 
-## Uso
+---
 
-Ingestar y consultar con Ollama:
+## Uso de la CLI
 
-```bash
-python -m local_teacher.cli \
-  --ingest test_docs \
-  --query "¿Qué es un sistema inercial?" \
-  --provider ollama \
-  --ollama-llm llama3.2
-```
-
-Ingestar figuras y tablas:
+### Ingesta de Documentos
+Para procesar e indexar documentos ubicados en una carpeta:
 
 ```bash
 python -m local_teacher.cli \
   --ingest test_docs \
   --figuras --tablas \
-  --recreate \
-  --provider ollama
+  --recreate
 ```
 
-Consultar sin re-ingestar:
+### Consultas Interactivas
+Para interactuar con el tutor en consola:
 
 ```bash
-python -m local_teacher.cli \
-  --query "¿Qué es un sistema inercial?" \
-  --provider ollama
+python -m local_teacher.cli --query "¿Qué es un sistema inercial?"
 ```
 
-Con OpenAI (requiere `OPENAI_API_KEY`):
+El comando abrirá un diálogo interactivo donde puedes escribir preguntas de seguimiento manteniendo el contexto de la conversación.
+
+### Opciones de la Línea de Comandos
+
+- `--ingest <ruta>`: Ruta al archivo o carpeta a procesar.
+- `--query <texto>`: Pregunta inicial para el tutor.
+- `--figuras`: Extrae imágenes y diagramas a disco en formato PNG.
+- `--tablas`: Extrae tablas a formatos Markdown y CSV.
+- `--no-formulas`: Omite el modelo de enriquecimiento de fórmulas para acelerar la carga.
+- `--recreate`: Recrea la colección en Qdrant desde cero.
+- `--graph`: Genera el Grafo de Conocimiento a partir de los documentos.
+- `--web-fallback`: Habilita búsqueda en internet si la información no existe localmente.
+- `--provider <nombre>`: Proveedor LLM (`ollama`, `openai`).
+- `--ollama-llm <modelo>`: Nombre del modelo de generación (por defecto `deepseek-r1:8b` o `llama3.2`).
+- `--ollama-embed <modelo>`: Modelo de embeddings (por defecto `nomic-embed-text`).
+- `--ollama-host <url>`: URL del servidor Ollama (por defecto `http://127.0.0.1:11434`).
+
+---
+
+## Pruebas Automatizadas
+
+Ejecuta la suite de pruebas unitarias e integración con `pytest`:
 
 ```bash
-python -m local_teacher.cli \
-  --ingest test_docs \
-  --query "¿Qué es un sistema inercial?" \
-  --provider openai
+pytest tests/
 ```
 
-### Opciones completas del CLI
+---
 
-El script principal soporta los siguientes argumentos:
+## Estructura del Código
 
-**Operaciones principales:**
-- `--ingest <ruta>`: Archivo o directorio a ingerir.
-- `--query <texto>`: Pregunta a realizar al tutor.
-- `--recreate`: Recrea la colección en Qdrant (útil si los datos están desactualizados).
-- `--graph`: Extrae y construye un Grafo de Conocimiento para usar GraphRAG.
-
-**Extracción y procesamiento:**
-- `--figuras`: Extrae imágenes (PNG).
-- `--tablas`: Extrae tablas (a CSV y Markdown).
-- `--no-formulas`: Desactiva el uso del VLM de Docling para decodificar fórmulas (acelera el proceso).
-
-**Generación y Modelos:**
-- `--web-fallback`: Permite que el sistema consulte a la web (Tavily) si la respuesta no está en el contexto local.
-- `--provider <nombre>`: Proveedor LLM (`ollama`, `openai`, `claude`, `gemini`).
-- `--ollama-llm <modelo>`: Nombre del modelo LLM de Ollama (ej. `llama3.2`).
-- `--ollama-embed <modelo>`: Nombre del modelo de embedding (ej. `nomic-embed-text`).
-- `--ollama-host <url>`: URL del servidor de Ollama.
-
-## Ingesta programática
-
-```python
-from local_teacher.ingestion.loader import cargar_archivos
-
-docs = cargar_archivos(
-    "test_docs",
-    extraer_figuras=True,
-    extraer_tablas=True,
-    enriquecer_formulas=True # Por defecto usa el VLM de Docling
-)
+```text
+local-teacher/
+├── local_teacher/
+│   ├── ingestion/       # Loader (Docling), Chunker y Graph Builder
+│   ├── query/           # Retriever, Optimizer, Critic y Tutor
+│   ├── storage/         # Qdrant Store y Redis Cache
+│   ├── evaluation/      # Generación sintética y evaluación RAG
+│   ├── factory.py       # Configuración de LLM y Embeddings
+│   ├── metadata.py      # Definición de tipos de metadatos
+│   └── cli.py           # Interfaz de línea de comandos interactiva
+├── docs/                # Documentación técnica y guías
+├── tests/               # Suite de tests con pytest
+├── docker-compose.yml   # Orquestación de Qdrant, Redis y Ollama
+├── requirements.txt     # Dependencias de Python
+└── README.md            # Este documento
 ```
-
-## Cómo funciona la extracción
-
-- Los PDFs se procesan con **Docling**.
-- Docling extrae texto, figuras y tablas en una sola pasada.
-- Las figuras se filtran por caption (`Figure N-M`, `Figura N`, etc.) para
-  evitar íconos y etiquetas sueltas.
-- Cada figura y tabla se convierte en un documento recuperable con metadata de
-  fuente.
-- Se genera `captions.json` como manifest legible para auditoría.
-
-## Embeddings y multimodalidad
-
-El MVP usa embeddings textuales locales. Las figuras se recuperan mediante
-caption y contexto textual. CLIP u otros embeddings visuales se evaluarán en
-una fase posterior.
-
-## Estructura del Proyecto (Domain-Driven)
-
-El proyecto está organizado por dominios funcionales para facilitar su escalabilidad:
-
-- **`ingestion/`**: Extrae datos de documentos (`loader.py`), los divide (`chunker.py`) y construye grafos (`graph_builder.py`).
-- **`query/`**: Orquesta la interacción con el usuario (`retriever.py`), reescribe preguntas (`optimizer.py`) y evalúa alucinaciones (`critic.py`).
-- **`storage/`**: Gestiona las conexiones a bases de datos vectoriales (`qdrant_store.py`) y cachés exactos L1 (`redis_cache.py`).
-- **`evaluation/`**: Herramientas para generar datasets de prueba de forma sintética (`generate_dataset.py`) y evaluar el rendimiento del RAG (`eval.py`).
-
-## Tecnologías de Almacenamiento
-
-- **Qdrant**: Base de datos vectorial persistente utilizada para búsquedas semánticas (Embedding search).
-- **Redis**: Caché L1 volátil para "Exact Match" (MD5) de consultas repetidas, acelerando las respuestas al saltarse el procesamiento del LLM.
-
-## Objetivo del MVP
-
-Un tutor LLM utiliza la colección local de Qdrant para responder preguntas
-sobre el material, indicar cuándo no hay contexto suficiente, soportar Timeouts asíncronos y mostrar las
-fuentes utilizadas, todo de manera 100% local y modular.

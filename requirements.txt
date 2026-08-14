@@ -20,3 +20,9 @@ networkx
 
 # Herramientas Web
 ddgs
+
+# Re-ranking
+flashrank
+
+# Testing
+pytest
