@@ -4,9 +4,16 @@ import time
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_qdrant import FastEmbedSparse, QdrantVectorStore, RetrievalMode
-from langchain.retrievers import ParentDocumentRetriever
-from langchain.storage import LocalFileStore
+from langchain_classic.retrievers import ParentDocumentRetriever
+from langchain_classic.storage import LocalFileStore, EncoderBackedStore
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+import json
+
+def _doc_serializer(doc: Document) -> bytes:
+    return json.dumps(doc.dict()).encode("utf-8")
+
+def _doc_deserializer(b: bytes) -> Document:
+    return Document(**json.loads(b.decode("utf-8")))
 
 
 def get_qdrant_retriever(
@@ -24,7 +31,13 @@ def get_qdrant_retriever(
     sparse_embeddings = FastEmbedSparse(model_name="Qdrant/bm25")
 
     # Almacenamiento local para los documentos padre (en disco para que sea persistente y no requiera Redis forzosamente)
-    store = LocalFileStore("./.local_teacher_parents")
+    fs = LocalFileStore("./.local_teacher_parents")
+    store = EncoderBackedStore(
+        store=fs,
+        key_encoder=lambda x: x,
+        value_serializer=_doc_serializer,
+        value_deserializer=_doc_deserializer
+    )
 
     # El child_splitter corta los padres (1500 chars) en trozos pequeños para Qdrant (300 chars)
     child_splitter = RecursiveCharacterTextSplitter(chunk_size=300, chunk_overlap=50)
