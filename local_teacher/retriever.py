@@ -173,7 +173,17 @@ def _recuperar_y_filtrar(
     if entidades_filtro:
         def score_doc(d):
             content = d.page_content.lower()
-            return sum(content.count(e.lower()) for e in entidades_filtro)
+            score = 0
+            for e in entidades_filtro:
+                e_lower = e.lower()
+                score += content.count(e_lower)
+                # Bono masivo si la entidad está en formato de definición o título
+                if f"[{e_lower}]" in content or f"{e_lower}:" in content or f"**{e_lower}**" in content:
+                    score += 100
+                # Bono si el documento es explícitamente un glosario
+                if "glosario" in d.metadata.get("source", "").lower() or "glosario" in content:
+                    score += 50
+            return score
         docs = sorted(docs, key=score_doc, reverse=True)
 
     # Limitar el número de documentos finales para no inundar el contexto
@@ -230,7 +240,8 @@ def ejecutar_consulta(
     ):
         porcentaje = int((paso / total) * 100)
         barra = "█" * (porcentaje // 10) + "░" * (10 - (porcentaje // 10))
-        texto = f"\r[{barra}] {porcentaje:3}% | {mensaje}".ljust(80)
+        # Se añaden 20 espacios extra al final para asegurar el borrado visual de la línea anterior
+        texto = f"\r[{barra}] {porcentaje:3}% | {mensaje}" + " " * 30
         if saltar_linea:
             print(texto, flush=True)
         else:
