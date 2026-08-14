@@ -7,13 +7,15 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from dotenv import load_dotenv
+from langchain_core.messages import AIMessage, HumanMessage
+
+from local_teacher.factory import obtener_modelos, obtener_llm_critico
 from local_teacher.ingestion.chunker import dividir_texto
-from local_teacher.factory import obtener_modelos
+from local_teacher.ingestion.graph_builder import build_knowledge_graph
 from local_teacher.ingestion.loader import cargar_archivos, guardar_cache_jsonl
-from local_teacher.query.retriever import ejecutar_consulta
+from local_teacher.query.retriever import stream_consulta
 from local_teacher.storage.qdrant_store import get_qdrant_store
 from local_teacher.storage.redis_cache import get_semantic_cache_store
-from local_teacher.ingestion.graph_builder import build_knowledge_graph
 
 logging.basicConfig(
     filename="local_teacher.log",
@@ -22,6 +24,27 @@ logging.basicConfig(
     force=True,
 )
 logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("docling").setLevel(logging.INFO)
+
+
+def _print_sources(docs):
+    if not docs:
+        return
+    print("\n\n---\nFuentes citadas:")
+    for i, d in enumerate(docs, 1):
+        meta = d.metadata
+        fuente = meta.get("fuente", "Desconocida")
+        fuente_nombre = os.path.basename(fuente)
+        pagina = meta.get("pagina", "N/A")
+        seccion = meta.get("ruta_seccion", "N/A")
+        tipo = meta.get("tipo_archivo", "texto")
+
+        info = f"[{i}] Archivo: {fuente_nombre} | Pag: {pagina} | Sección: {seccion}"
+        if tipo in ("figura", "tabla"):
+            info += f" | Tipo: {tipo} | Ruta: {meta.get('ruta_recurso', 'N/A')}"
+
+        print(info)
+    print("---")
 
 
 def main() -> None:
@@ -49,12 +72,18 @@ def main() -> None:
         action="store_true",
         help="Permitir consultar la web si la respuesta no está en los documentos locales",
     )
+    parser.add_argument(
+        "--no-critic",
+        action="store_true",
+        help="Desactiva el supervisor interno (Self-RAG) para acelerar la respuesta al evitar la segunda evaluación del LLM.",
+    )
 
     # Modelos
     parser.add_argument(
         "--provider", default=os.getenv("LOCAL_TEACHER_PROVIDER", "ollama")
     )
     parser.add_argument("--ollama-llm", default=os.getenv("OLLAMA_LLM", "llama3.2"))
+    parser.add_argument("--ollama-critic-llm", default=os.getenv("OLLAMA_CRITIC_LLM", "deepseek-r1:8b"))
     parser.add_argument(
         "--ollama-embed", default=os.getenv("OLLAMA_EMBED", "nomic-embed-text")
     )
@@ -72,6 +101,12 @@ def main() -> None:
         args.provider,
         ollama_llm=args.ollama_llm,
         ollama_embed=args.ollama_embed,
+        ollama_host=args.ollama_host,
+    )
+    
+    llm_critic = obtener_llm_critico(
+        args.provider,
+        ollama_critic_llm=args.ollama_critic_llm,
         ollama_host=args.ollama_host,
     )
 
@@ -112,19 +147,49 @@ def main() -> None:
         print("[*] Conectando a Qdrant...")
         vectorstore = vectorstore or get_qdrant_store(embeddings)
         cache_store = get_semantic_cache_store()
-        print("[*] Ejecutando búsqueda y generación...")
-        res = ejecutar_consulta(
-            vectorstore,
-            llm,
-            args.query,
-            transmitir=True,
-            busqueda_web_alternativa=args.web_fallback,
-            cache_store=cache_store,
-        )
-        for chunk in res:
-            if "answer" in chunk:
-                print(chunk["answer"], end="", flush=True)
-        print()
+
+        chat_history = []
+
+        consulta_actual = args.query
+        while True:
+            print("\n[Tutor Local]: Procesando tu pregunta...")
+            res_gen = stream_consulta(
+                vectorstore,
+                llm,
+                consulta_actual,
+                chat_history=chat_history,
+                busqueda_web_alternativa=args.web_fallback,
+                cache_store=cache_store,
+                usar_critico=not args.no_critic,
+                llm_critic=llm_critic,
+            )
+
+            respuesta_final = ""
+            context_docs = []
+
+            for chunk in res_gen:
+                if "answer" in chunk:
+                    respuesta_final += chunk["answer"]
+                    print(chunk["answer"], end="", flush=True)
+                if "context_docs" in chunk:
+                    context_docs = chunk["context_docs"]
+
+            _print_sources(context_docs)
+
+            # Guardar en memoria
+            chat_history.append(HumanMessage(content=consulta_actual))
+            chat_history.append(AIMessage(content=respuesta_final))
+
+            # Loop
+            try:
+                print("\n")
+                consulta_actual = input(
+                    "Haz una pregunta de seguimiento (o 'salir' para terminar): "
+                )
+                if consulta_actual.strip().lower() in ("salir", "exit", "quit"):
+                    break
+            except (KeyboardInterrupt, EOFError):
+                break
 
 
 if __name__ == "__main__":
