@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from langchain_core.documents import Document
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_qdrant import QdrantVectorStore
+from langchain_core.retrievers import BaseRetriever
 from pathlib import Path
 from langchain_community.tools import DuckDuckGoSearchRun
 from flashrank import Ranker, RerankRequest
@@ -118,7 +118,7 @@ def _obtener_contexto_grafo(entidades_filtro: list[str]) -> tuple[str, list[str]
 
 
 def _recuperar_y_filtrar(
-    vectorstore: QdrantVectorStore,
+    retriever: BaseRetriever,
     consulta_optimizada: str,
     capitulo_filtro: Optional[str],
     entidades_filtro: list[str] = None,
@@ -129,14 +129,16 @@ def _recuperar_y_filtrar(
 
     if entidades_filtro:
         for entidad in entidades_filtro:
-            res = vectorstore.similarity_search(entidad, k=15)
+            retriever.search_kwargs = {"k": 15}
+            res = retriever.invoke(entidad)
             for d in res:
                 content_hash = hash(d.page_content)
                 if content_hash not in vistos_id:
                     docs.append(d)
                     vistos_id.add(content_hash)
 
-    res_completa = vectorstore.similarity_search(consulta_optimizada, k=25)
+    retriever.search_kwargs = {"k": 25}
+    res_completa = retriever.invoke(consulta_optimizada)
     for d in res_completa:
         content_hash = hash(d.page_content)
         if content_hash not in vistos_id:
@@ -214,12 +216,12 @@ def _crear_cadena_tutor(llm: BaseChatModel, busqueda_web_alternativa: bool, inte
 
 
 def _generador_procesar_consulta(
-    vectorstore: QdrantVectorStore,
+    retriever: BaseRetriever,
     llm: BaseChatModel,
     consulta: str,
     chat_history: list = None,
     busqueda_web_alternativa: bool = False,
-    cache_store: QdrantVectorStore = None,
+    cache_store: BaseRetriever = None,
     progreso_callback=None,
     usar_critico: bool = True,
     llm_critic: BaseChatModel = None,
@@ -284,7 +286,7 @@ def _generador_procesar_consulta(
     _progreso(1, 4, "Recuperando documentos...")
     t_vec_start = time.time()
     docs = _recuperar_y_filtrar(
-        vectorstore, consulta_optimizada, capitulo_filtro, entidades_filtro
+        retriever, consulta_optimizada, capitulo_filtro, entidades_filtro
     )
     tracker.add_latency("Recuperacion_Vectorial", t_vec_start)
 
@@ -453,12 +455,12 @@ def procesar_consulta(*args, **kwargs) -> dict:
 
 
 def stream_consulta(
-    vectorstore: QdrantVectorStore,
+    retriever: BaseRetriever,
     llm: BaseChatModel,
     consulta: str,
     chat_history: list = None,
     busqueda_web_alternativa: bool = False,
-    cache_store: QdrantVectorStore = None,
+    cache_store: BaseRetriever = None,
     usar_critico: bool = True,
     llm_critic: BaseChatModel = None,
 ) -> Iterator[dict]:
@@ -482,7 +484,7 @@ def stream_consulta(
             print(texto, end="", flush=True)
 
     yield from _generador_procesar_consulta(
-        vectorstore,
+        retriever,
         llm,
         consulta,
         chat_history,
@@ -495,18 +497,18 @@ def stream_consulta(
 
 
 def ejecutar_consulta(
-    vectorstore: QdrantVectorStore,
+    retriever: BaseRetriever,
     llm: BaseChatModel,
     consulta: str,
     chat_history: list = None,
     busqueda_web_alternativa: bool = False,
-    cache_store: QdrantVectorStore = None,
+    cache_store: BaseRetriever = None,
     usar_critico: bool = True,
     llm_critic: BaseChatModel = None,
 ) -> dict:
     """Ejecución síncrona, devuelve directamente el diccionario."""
     return procesar_consulta(
-        vectorstore,
+        retriever,
         llm,
         consulta,
         chat_history,

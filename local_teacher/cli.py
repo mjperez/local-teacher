@@ -14,7 +14,7 @@ from local_teacher.ingestion.chunker import dividir_texto
 from local_teacher.ingestion.graph_builder import build_knowledge_graph
 from local_teacher.ingestion.loader import cargar_archivos, guardar_cache_jsonl
 from local_teacher.query.retriever import stream_consulta
-from local_teacher.storage.qdrant_store import get_qdrant_store
+from local_teacher.storage.qdrant_store import get_qdrant_retriever
 from local_teacher.storage.redis_cache import get_semantic_cache_store
 
 logging.basicConfig(
@@ -110,7 +110,7 @@ def main() -> None:
         ollama_host=args.ollama_host,
     )
 
-    vectorstore = None
+    retriever = None
 
     if args.ingest:
         print(f"[*] Iniciando carga de documentos desde: {args.ingest}")
@@ -138,14 +138,14 @@ def main() -> None:
             print(
                 "[*] Generando embeddings y guardando en Qdrant (esto puede tomar un tiempo)..."
             )
-            vectorstore = get_qdrant_store(
+            retriever = get_qdrant_retriever(
                 embeddings, chunks, force_recreate=args.recreate
             )
             print(f"[+] Ingesta completada ({len(chunks)} fragmentos).")
 
     if args.query:
         print("[*] Conectando a Qdrant...")
-        vectorstore = vectorstore or get_qdrant_store(embeddings)
+        retriever = retriever or get_qdrant_retriever(embeddings)
         cache_store = get_semantic_cache_store()
 
         chat_history = []
@@ -154,7 +154,7 @@ def main() -> None:
         while True:
             print("\n[Tutor Local]: Procesando tu pregunta...")
             res_gen = stream_consulta(
-                vectorstore,
+                retriever,
                 llm,
                 consulta_actual,
                 chat_history=chat_history,
