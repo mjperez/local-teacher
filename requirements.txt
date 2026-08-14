@@ -16,3 +16,7 @@ langchain-openai
 # Base de Datos Vectorial
 langchain-qdrant
 fastembed
+networkx
+
+# Herramientas Web
+ddgs

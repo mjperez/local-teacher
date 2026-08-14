@@ -19,10 +19,15 @@ services:
     image: ollama/ollama:latest
     container_name: local_teacher_ollama
     ports:
-      - "11434:11434"
+      - "11435:11434"
     volumes:
       - ollama_storage:/root/.ollama
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
     # Para usar la GPU en Linux/WSL, descomenta el bloque deploy siguiente.
     # deploy:
     #   resources:
@@ -32,6 +37,36 @@ services:
     #           count: all
     #           capabilities: [gpu]
 
+  redis:
+    image: redis:alpine
+    container_name: local_teacher_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_storage:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ollama-init:
+    image: curlimages/curl:latest
+    container_name: local_teacher_ollama_init
+    depends_on:
+      ollama:
+        condition: service_healthy
+    command: >
+      sh -c "
+      echo 'Descargando nomic-embed-text...' && 
+      curl -s -X POST http://ollama:11434/api/pull -d '{\"name\": \"nomic-embed-text\"}' &&
+      echo '\nDescargando deepseek-r1:8b...' &&
+      curl -s -X POST http://ollama:11434/api/pull -d '{\"name\": \"deepseek-r1:8b\"}' &&
+      echo '\n¡Modelos descargados exitosamente!'
+      "
+
 volumes:
   qdrant_storage:
   ollama_storage:
+  redis_storage:

@@ -7,3 +7,6 @@ test*
 tmp*
 *.log
 *.jsonl
+*.graphml
+onboarding*
+docs
