@@ -31,3 +31,28 @@ def obtener_modelos(
         )
         
     raise ValueError(f"[-] Proveedor no soportado: {provider}")
+
+
+def obtener_llm_critico(
+    provider: str,
+    ollama_critic_llm: str = "deepseek-r1:8b",
+    ollama_host: str | None = None,
+) -> BaseChatModel:
+    """Inicializa y devuelve el LLM específico para el supervisor (Critic)."""
+    provider = provider.lower()
+    
+    if provider == "openai":
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(model="gpt-4o", temperature=0)
+        
+    if provider == "ollama":
+        from langchain_ollama import ChatOllama
+        raw_host = ollama_host or os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+        host = raw_host.strip('"').strip("'")
+        
+        if host == "http://0.0.0.0" or host == "0.0.0.0":
+            host = "http://127.0.0.1:11434"
+            
+        return ChatOllama(model=ollama_critic_llm, temperature=0, base_url=host, num_ctx=8192)
+        
+    raise ValueError(f"[-] Proveedor no soportado: {provider}")
