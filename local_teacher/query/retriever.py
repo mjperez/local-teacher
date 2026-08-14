@@ -332,23 +332,37 @@ def _generador_procesar_consulta(
                 return
 
         t_gen_start = time.time()
-        respuesta = cadena_tutor.invoke(
-            {
-                "chat_history": chat_history,
-                "input": consulta,
-                "context": texto_contexto,
-                "graph_context": contexto_grafo,
-                "feedback": mensaje_feedback,
-            }
-        )
-        borrador = respuesta.content if hasattr(respuesta, "content") else str(respuesta)
+        
+        args_invoke = {
+            "chat_history": chat_history,
+            "input": consulta,
+            "context": texto_contexto,
+            "graph_context": contexto_grafo,
+            "feedback": mensaje_feedback,
+        }
+
+        if usar_critico:
+            respuesta = cadena_tutor.invoke(args_invoke)
+            borrador = respuesta.content if hasattr(respuesta, "content") else str(respuesta)
+        else:
+            # Hacer streaming verdadero y devolver tokens inmediatamente
+            borrador = ""
+            # Si no hay crítico, la impresión de progreso en consola interfiere con el texto, 
+            # así que forzamos un salto de línea limpio antes de empezar a escupir tokens.
+            _progreso(3, 4, "Generando respuesta en tiempo real...", saltar_linea=True)
+            for token_chunk in cadena_tutor.stream(args_invoke):
+                content = token_chunk.content if hasattr(token_chunk, "content") else str(token_chunk)
+                borrador += content
+                yield {"answer": content}
+
         tracker.add_latency(f"Generacion_LLM_Intento_{intento}", t_gen_start)
 
         if (
             "No poseo información suficiente" in borrador
             or "no está cubierto" in borrador.lower()
         ):
-            _progreso(4, 4, "¡Finalizado!", saltar_linea=True)
+            if usar_critico:
+                _progreso(4, 4, "¡Finalizado!", saltar_linea=True)
             tracker.finish_and_log("REJECTED_SAFE")
             yield {"context_docs": []}
             return
@@ -385,7 +399,8 @@ def _generador_procesar_consulta(
         es_rechazado = "RECHAZADO" in decision_critico or "REJECTED" in decision_critico
 
         if es_aprobado and not es_rechazado:
-            _progreso(4, 4, "¡Respuesta Aprobada!", saltar_linea=True)
+            if usar_critico:
+                _progreso(4, 4, "¡Respuesta Aprobada!", saltar_linea=True)
             if cache_store:
                 try:
                     cache_store.add_texts(
@@ -394,7 +409,12 @@ def _generador_procesar_consulta(
                 except Exception as e:
                     _log.warning(f"Error guardando en caché semántico: {e}")
             tracker.finish_and_log("APPROVED")
-            yield {"answer": borrador}
+            
+            if usar_critico:
+                # Solo yeildeamos la respuesta final si el crítico estaba activo 
+                # (si no, ya la fuimos yieldando token por token)
+                yield {"answer": borrador}
+            
             yield {"context_docs": docs}
             return
         else:
