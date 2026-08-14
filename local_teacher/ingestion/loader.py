@@ -6,11 +6,9 @@ import os
 import re
 from pathlib import Path
 from typing import Any
-from langchain_community.document_loaders import TextLoader
 from langchain_core.documents import Document
 
-# Hacer que Docling muestre progreso en la consola
-logging.getLogger("docling").setLevel(logging.INFO)
+# Hacer que Docling muestre progreso en la consola (movido a CLI u otro sitio)
 
 _log = logging.getLogger(__name__)
 _docling_converters: dict[bool, Any] = {}
@@ -500,12 +498,14 @@ def cargar_archivos(
         ext = item.suffix.lower()
         if ext in (".txt", ".md"):
             tipo = "markdown" if ext == ".md" else "texto"
-            docs_cargados = TextLoader(str(item), encoding="utf-8").load()
-            for d in docs_cargados:
-                d.metadata = {"fuente": str(item), "tipo_archivo": tipo}
+            try:
+                contenido = item.read_text(encoding="utf-8", errors="replace")
+                meta = {"fuente": str(item), "tipo_archivo": tipo}
                 if curso:
-                    d.metadata["curso"] = curso
-            docs.extend(docs_cargados)
+                    meta["curso"] = curso
+                docs.append(Document(page_content=contenido, metadata=meta))
+            except Exception as exc:
+                _log.error("Error leyendo archivo %s: %s", item.name, exc)
         elif ext in (".pdf", ".docx", ".pptx"):
             docs.extend(
                 _cargar_docling(
