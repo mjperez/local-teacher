@@ -490,6 +490,8 @@ def cargar_archivos(
     for item in items:
         if not item.is_file():
             continue
+        if item.name.endswith("_toc.txt"):
+            continue
 
         curso = None
         if ruta_carpeta.is_dir():
