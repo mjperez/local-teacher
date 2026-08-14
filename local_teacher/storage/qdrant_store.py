@@ -51,3 +51,4 @@ def get_qdrant_store(
         url=url,
         collection_name=collection,
     )
+
