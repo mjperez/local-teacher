@@ -177,21 +177,29 @@ def _recuperar_y_filtrar(
     return final_docs
 
 
-def _crear_cadena_tutor(llm: BaseChatModel, busqueda_web_alternativa: bool):
+def _crear_cadena_tutor(llm: BaseChatModel, busqueda_web_alternativa: bool, intencion: str = "conceptual"):
+    system_base = (
+        "Eres un tutor educativo experto. Tu objetivo es guiar al alumno respondiendo ESTRICTAMENTE con los apuntes recuperados. "
+    )
+    
+    if intencion == "ejercicio":
+        system_base += "El alumno necesita ayuda con un EJERCICIO O PROBLEMA PRÁCTICO. NO le des la solución directa bajo ninguna circunstancia. Dale pistas progresivas (scaffolding), guíalo paso a paso y hazle preguntas reflexivas para que descubra la solución por sí mismo. "
+    elif intencion == "aclaracion":
+        system_base += "El alumno tiene una duda rápida. Responde de forma directa, concisa y sin rodeos. "
+    else:
+        system_base += "Adopta un tono pedagógico y formativo: desglosa los problemas teóricos, explica el porqué de las cosas, y fomenta la comprensión profunda. Puedes hacer una pregunta de control al final para asegurar que el alumno entendió. "
+        
+    system_base += (
+        "\nINSTRUCCIONES FINALES OBLIGATORIAS:\n"
+        "1. Si la respuesta está en el contexto recuperado, responde basándote en él.\n"
+        "2. Si te preguntan de qué trata el texto o piden un resumen general, sintetiza los temas principales basados únicamente en el contexto recuperado.\n"
+        "3. Si la respuesta NO ESTÁ en el contexto o el contexto está vacío, indica explícitamente que el tema no está cubierto en el material cargado. TIENES PROHIBIDO inventar.\n"
+        "4. Si no sabes, responde SÓLO con: REQUIRE_WEB_SEARCH (solo aplicable si busqueda_web_alternativa=True)."
+    )
+    
     prompt_tutor = ChatPromptTemplate.from_messages(
         [
-            (
-                "system",
-                "Eres un tutor educativo experto. Tu objetivo es guiar al alumno respondiendo ESTRICTAMENTE con los apuntes recuperados. "
-                "Adopta un tono pedagógico y formativo: desglosa los problemas en pasos, explica el porqué de las cosas, "
-                "y fomenta la comprensión en lugar de solo entregar la solución final. Puedes hacer preguntas de control "
-                "al final para asegurar que el alumno entendió.\n"
-                "INSTRUCCIONES FINALES OBLIGATORIAS:\n"
-                "1. Si la respuesta está en el contexto recuperado, responde basándote en él.\n"
-                "2. Si te preguntan de qué trata el texto o piden un resumen general, sintetiza los temas principales basados únicamente en el contexto recuperado.\n"
-                "3. Si la respuesta NO ESTÁ en el contexto o el contexto está vacío, indica explícitamente que el tema no está cubierto en el material cargado. TIENES PROHIBIDO inventar.\n"
-                "4. Si no sabes, responde SÓLO con: REQUIRE_WEB_SEARCH (solo aplicable si busqueda_web_alternativa=True).",
-            ),
+            ("system", system_base),
             MessagesPlaceholder(variable_name="chat_history"),
             (
                 "human",
@@ -258,6 +266,7 @@ def _generador_procesar_consulta(
     tracker.set_meta("optimized_query", consulta_optimizada)
     capitulo_filtro = consulta_estructurada.capitulo
     entidades_filtro = consulta_estructurada.entidades
+    intencion_filtro = getattr(consulta_estructurada, "intencion", "conceptual")
 
     tracker.add_latency("Optimizacion_Reescritura", t_opt_start)
 
@@ -288,7 +297,7 @@ def _generador_procesar_consulta(
         yield {"context_docs": []}
         return
 
-    cadena_tutor = _crear_cadena_tutor(llm, busqueda_web_alternativa)
+    cadena_tutor = _crear_cadena_tutor(llm, busqueda_web_alternativa, intencion_filtro)
     herramienta_busqueda = DuckDuckGoSearchRun() if busqueda_web_alternativa else None
 
     texto_contexto = _formatear_documentos(docs)

@@ -19,12 +19,17 @@ class ConsultaReescrita(BaseModel):
         default_factory=list,
         description="Conceptos nucleares, acrónimos o nombres propios mencionados en la pregunta.",
     )
+    intencion: str = Field(
+        default="conceptual",
+        description="Intención de la pregunta: 'conceptual' (explicación teórica), 'ejercicio' (ayuda con un problema práctico), 'aclaracion' (duda rápida).",
+    )
 
 class ConsultaEstructurada:
-    def __init__(self, consulta: str, capitulo: str | None, entidades: List[str]):
+    def __init__(self, consulta: str, capitulo: str | None, entidades: List[str], intencion: str = "conceptual"):
         self.consulta = consulta
         self.capitulo = capitulo
         self.entidades = entidades
+        self.intencion = intencion
 
 def reescribir_consulta(llm: BaseChatModel, consulta: str) -> ConsultaEstructurada:
     """1. Agente de Reformulación (Rewrite)"""
@@ -59,7 +64,8 @@ def reescribir_consulta(llm: BaseChatModel, consulta: str) -> ConsultaEstructura
             return ConsultaEstructurada(
                 consulta=respuesta.consulta,
                 capitulo=respuesta.capitulo,
-                entidades=respuesta.entidades
+                entidades=respuesta.entidades,
+                intencion=respuesta.intencion
             )
         except concurrent.futures.TimeoutError:
             _log.warning("[!] Timeout de 20s excedido al optimizar. Usando fallback.")
