@@ -2,6 +2,10 @@ import argparse
 import logging
 import os
 import sys
+
+# Permite ejecutar con "python local_teacher/cli.py" directamente
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from dotenv import load_dotenv
 from local_teacher.chunker import dividir_texto
 from local_teacher.factory import obtener_modelos
@@ -9,9 +13,6 @@ from local_teacher.loader import cargar_archivos, guardar_cache_jsonl
 from local_teacher.retriever import ejecutar_consulta
 from local_teacher.storage.qdrant_store import get_qdrant_store
 from local_teacher.graph_builder import build_knowledge_graph
-
-# Permite ejecutar con "python local_teacher/cli.py" directamente
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 logging.basicConfig(
     filename="local_teacher.log",
@@ -117,7 +118,6 @@ def main() -> None:
             transmitir=True,
             busqueda_web_alternativa=args.web_fallback,
         )
-        print("\n--- RESPUESTA ---")
         for chunk in res:
             if "answer" in chunk:
                 print(chunk["answer"], end="", flush=True)

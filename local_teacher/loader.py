@@ -263,10 +263,10 @@ def _docs_tablas(
 # ---------------------------------------------------------------------------
 
 
-def _extraer_titulo_pdf(ruta: Path) -> str | None:
-    """Intenta extraer el título interno de los metadatos del PDF.
-    Usa pypdf de manera opcional para no romper el código si no está instalado.
-    """
+def _extraer_titulo_archivo(ruta: Path) -> str | None:
+    """Intenta extraer el título interno del archivo si es un PDF."""
+    if ruta.suffix.lower() != ".pdf":
+        return None
     try:
         from pypdf import PdfReader
 
@@ -281,7 +281,7 @@ def _extraer_titulo_pdf(ruta: Path) -> str | None:
     return None
 
 
-def _cargar_pdf(
+def _cargar_docling(
     ruta: Path,
     extraer_figuras: bool,
     extraer_tablas: bool,
@@ -289,7 +289,7 @@ def _cargar_pdf(
     enriquecer_formulas: bool = True,
     curso: str | None = None,
 ) -> list[Document]:
-    """Carga un PDF con Docling y devuelve texto, figuras y tablas usando 2 pasadas si hay fórmulas."""
+    """Carga un documento (PDF, DOCX, PPTX) con Docling y devuelve texto, figuras y tablas usando 2 pasadas si hay fórmulas."""
     try:
         from docling.chunking import HierarchicalChunker
         from docling.datamodel.document import TextItem
@@ -321,7 +321,15 @@ def _cargar_pdf(
             headings = c.meta.headings if hasattr(c.meta, "headings") else []
             if p not in textos_por_pagina:
                 textos_por_pagina[p] = []
-            textos_por_pagina[p].append((c.text, headings))
+            
+            chunk_text = c.text
+            if headings and c.text:
+                contexto = " > ".join(headings)
+                # Evitar duplicar si por alguna razón ya está en el texto
+                if headings[-1] not in c.text[:200]:
+                    chunk_text = f"[{contexto}]\n{c.text}"
+                    
+            textos_por_pagina[p].append((chunk_text, headings))
 
         # 2. Pasada Lenta (solo si se encontraron fórmulas y está activado)
         if paginas_con_formulas:
@@ -359,7 +367,14 @@ def _cargar_pdf(
                     if p not in reemplazados:
                         textos_por_pagina[p] = []
                         reemplazados.add(p)
-                    textos_por_pagina[p].append((c.text, headings))
+                        
+                    chunk_text = c.text
+                    if headings and c.text:
+                        contexto = " > ".join(headings)
+                        if headings[-1] not in c.text[:200]:
+                            chunk_text = f"[{contexto}]\n{c.text}"
+                            
+                    textos_por_pagina[p].append((chunk_text, headings))
 
         # El curso viene inyectado desde la función principal si aplica
 
@@ -380,7 +395,7 @@ def _cargar_pdf(
                 heading_map.append((start_idx, headings))
         meta = {
             "fuente": str(ruta),
-            "tipo_archivo": "pdf",
+            "tipo_archivo": ruta.suffix.lower().strip("."),
             "page_map": page_map,
             "heading_map": heading_map,
         }
@@ -397,7 +412,7 @@ def _cargar_pdf(
             except OSError as exc:
                 _log.warning("No se pudo escribir el TOC %s: %s", toc_path, exc)
 
-        titulo = _extraer_titulo_pdf(ruta)
+        titulo = _extraer_titulo_archivo(ruta)
         if titulo:
             meta["titulo"] = titulo
 
@@ -465,7 +480,7 @@ def cargar_archivos(
 ) -> list[Document]:
     """Carga archivos de una ruta como documentos.
 
-    Formatos soportados: .txt, .md, .pdf, .jsonl
+    Formatos soportados: .txt, .md, .pdf, .docx, .pptx, .jsonl
     """
     ruta_carpeta = Path(ruta_carpeta)
     if not ruta_carpeta.exists():
@@ -491,9 +506,9 @@ def cargar_archivos(
                 if curso:
                     d.metadata["curso"] = curso
             docs.extend(docs_cargados)
-        elif ext == ".pdf":
+        elif ext in (".pdf", ".docx", ".pptx"):
             docs.extend(
-                _cargar_pdf(
+                _cargar_docling(
                     item,
                     extraer_figuras,
                     extraer_tablas,
