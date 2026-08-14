@@ -31,6 +31,8 @@ def _print_sources(docs):
     if not docs:
         return
     print("\n\n---\nFuentes citadas:")
+    
+    grupos = {}
     for i, d in enumerate(docs, 1):
         meta = d.metadata
         fuente = meta.get("fuente", "Desconocida")
@@ -38,12 +40,21 @@ def _print_sources(docs):
         pagina = meta.get("pagina", "N/A")
         seccion = meta.get("ruta_seccion", "N/A")
         tipo = meta.get("tipo_archivo", "texto")
+        ruta_recurso = meta.get("ruta_recurso", "N/A")
 
-        info = f"[{i}] Archivo: {fuente_nombre} | Pag: {pagina} | Sección: {seccion}"
+        clave = (fuente_nombre, pagina, seccion, tipo, ruta_recurso)
+        if clave not in grupos:
+            grupos[clave] = []
+        grupos[clave].append(i)
+
+    for clave, indices in grupos.items():
+        fuente_nombre, pagina, seccion, tipo, ruta_recurso = clave
+        inds_str = ", ".join(f"[{i}]" for i in indices)
+        info = f"{inds_str} Archivo: {fuente_nombre} | Pag: {pagina} | Sección: {seccion}"
         if tipo in ("figura", "tabla"):
-            info += f" | Tipo: {tipo} | Ruta: {meta.get('ruta_recurso', 'N/A')}"
-
+            info += f" | Tipo: {tipo} | Ruta: {ruta_recurso}"
         print(info)
+        
     print("---")
 
 

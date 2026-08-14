@@ -48,7 +48,7 @@ class ConsultaReescrita(BaseModel):
 def _formatear_documentos(docs: list[Document]) -> str:
     """Formatea los documentos inyectando su metadata para el LLM."""
     res = []
-    for d in docs:
+    for i, d in enumerate(docs, 1):
         meta = []
         if d.metadata.get("curso"):
             meta.append(f"Curso: {d.metadata['curso']}")
@@ -71,7 +71,7 @@ def _formatear_documentos(docs: list[Document]) -> str:
 
         meta_str = " | ".join(meta)
         res.append(
-            f"--- INICIO FRAGMENTO ---\nMetadata: [{meta_str}]\nContenido:\n{d.page_content}\n--- FIN FRAGMENTO ---"
+            f"--- FUENTE [{i}] ---\nMetadata: [{meta_str}]\nContenido:\n{d.page_content}\n--- FIN FUENTE [{i}] ---"
         )
 
     return "\n\n".join(res)
@@ -218,8 +218,9 @@ def _crear_cadena_tutor(llm: BaseChatModel, busqueda_web_alternativa: bool, inte
         "\nINSTRUCCIONES FINALES OBLIGATORIAS:\n"
         "1. Si la respuesta está en el contexto recuperado, responde basándote en él.\n"
         "2. Si te preguntan de qué trata el texto o piden un resumen general, sintetiza los temas principales basados únicamente en el contexto recuperado.\n"
-        "3. Si la respuesta NO ESTÁ en el contexto o el contexto está vacío, indica explícitamente que el tema no está cubierto en el material cargado. TIENES PROHIBIDO inventar.\n"
-        "4. Si no sabes, responde SÓLO con: REQUIRE_WEB_SEARCH (solo aplicable si busqueda_web_alternativa=True)."
+        "3. DEBES incluir Citas en Línea (ej. '...el motor se enciende [2].') al final de CADA afirmación usando el número de fuente correspondiente.\n"
+        "4. Si la respuesta NO ESTÁ en el contexto o el contexto está vacío, indica explícitamente que el tema no está cubierto en el material cargado. TIENES PROHIBIDO inventar.\n"
+        "5. Si no sabes, responde SÓLO con: REQUIRE_WEB_SEARCH (solo aplicable si busqueda_web_alternativa=True)."
     )
     
     prompt_tutor = ChatPromptTemplate.from_messages(
@@ -502,9 +503,15 @@ def stream_consulta(
             _progreso_print.ya_salto = True
             
         if saltar_linea:
-            print(texto, flush=True)
+            try:
+                print(texto, flush=True)
+            except UnicodeEncodeError:
+                print(texto.replace("█", "#").replace("░", "-"), flush=True)
         else:
-            print(texto, end="", flush=True)
+            try:
+                print(texto, end="", flush=True)
+            except UnicodeEncodeError:
+                print(texto.replace("█", "#").replace("░", "-"), end="", flush=True)
 
     yield from _generador_procesar_consulta(
         retriever,
