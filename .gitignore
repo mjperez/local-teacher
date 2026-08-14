@@ -9,4 +9,4 @@ tmp*
 *.jsonl
 *.graphml
 docs/
-.prettierrc
+.prettierrc.local_teacher_parents/
