@@ -50,19 +50,21 @@ def reescribir_consulta(llm: BaseChatModel, consulta: str) -> ConsultaEstructura
         def _invocar():
             return cadena_reescritura.invoke({"input": consulta})
             
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(_invocar)
-            try:
-                # 20 segundos máximo para optimizar
-                respuesta = future.result(timeout=20)
-                return ConsultaEstructurada(
-                    consulta=respuesta.consulta,
-                    capitulo=respuesta.capitulo,
-                    entidades=respuesta.entidades
-                )
-            except concurrent.futures.TimeoutError:
-                _log.warning("[!] Timeout de 20s excedido al optimizar. Usando fallback.")
-                return ConsultaEstructurada(consulta=consulta, capitulo=None, entidades=[])
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(_invocar)
+        try:
+            # 20 segundos máximo para optimizar
+            respuesta = future.result(timeout=20)
+            executor.shutdown(wait=False)
+            return ConsultaEstructurada(
+                consulta=respuesta.consulta,
+                capitulo=respuesta.capitulo,
+                entidades=respuesta.entidades
+            )
+        except concurrent.futures.TimeoutError:
+            _log.warning("[!] Timeout de 20s excedido al optimizar. Usando fallback.")
+            executor.shutdown(wait=False)
+            return ConsultaEstructurada(consulta=consulta, capitulo=None, entidades=[])
     except Exception as e:
         _log.error(f"[!] Falló la extracción estructurada: {e}. Usando fallback.")
         return ConsultaEstructurada(consulta=consulta, capitulo=None, entidades=[])
