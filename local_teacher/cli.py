@@ -7,12 +7,13 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from dotenv import load_dotenv
-from local_teacher.chunker import dividir_texto
+from local_teacher.ingestion.chunker import dividir_texto
 from local_teacher.factory import obtener_modelos
-from local_teacher.loader import cargar_archivos, guardar_cache_jsonl
-from local_teacher.retriever import ejecutar_consulta
+from local_teacher.ingestion.loader import cargar_archivos, guardar_cache_jsonl
+from local_teacher.query.retriever import ejecutar_consulta
 from local_teacher.storage.qdrant_store import get_qdrant_store
-from local_teacher.graph_builder import build_knowledge_graph
+from local_teacher.storage.redis_cache import get_semantic_cache_store
+from local_teacher.ingestion.graph_builder import build_knowledge_graph
 
 logging.basicConfig(
     filename="local_teacher.log",
@@ -110,6 +111,7 @@ def main() -> None:
     if args.query:
         print("[*] Conectando a Qdrant...")
         vectorstore = vectorstore or get_qdrant_store(embeddings)
+        cache_store = get_semantic_cache_store()
         print("[*] Ejecutando búsqueda y generación...")
         res = ejecutar_consulta(
             vectorstore,
@@ -117,6 +119,7 @@ def main() -> None:
             args.query,
             transmitir=True,
             busqueda_web_alternativa=args.web_fallback,
+            cache_store=cache_store,
         )
         for chunk in res:
             if "answer" in chunk:
