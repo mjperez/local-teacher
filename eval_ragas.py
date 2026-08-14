@@ -1,6 +1,19 @@
 import json
 import logging
 import os
+import sys
+import types
+
+# Monkeypatch for ragas 0.4.3 issue with missing ChatVertexAI in newer langchain_community
+if 'langchain_community.chat_models.vertexai' not in sys.modules:
+    try:
+        from langchain_google_vertexai import ChatVertexAI
+    except ImportError:
+        ChatVertexAI = type('ChatVertexAI', (object,), {})
+    mock_module = types.ModuleType('langchain_community.chat_models.vertexai')
+    mock_module.ChatVertexAI = ChatVertexAI
+    sys.modules['langchain_community.chat_models.vertexai'] = mock_module
+
 from datasets import Dataset
 from ragas import evaluate
 from ragas.metrics import faithfulness, answer_relevancy, context_recall
