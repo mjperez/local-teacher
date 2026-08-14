@@ -3,7 +3,7 @@ import sys
 
 from local_teacher.factory import obtener_modelos
 from local_teacher.storage.qdrant_store import get_qdrant_store
-import local_teacher.retriever as ret
+from local_teacher.query import retriever as ret
 
 llm, emb = obtener_modelos("ollama")
 vs = get_qdrant_store(emb)
