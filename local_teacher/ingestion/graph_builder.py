@@ -1,4 +1,4 @@
-import networkx as nx
+import kuzu
 import logging
 from pathlib import Path
 from langchain_core.documents import Document
@@ -8,10 +8,10 @@ from langchain_core.output_parsers import StrOutputParser
 
 _log = logging.getLogger(__name__)
 
-def build_knowledge_graph(docs: list[Document], llm: BaseChatModel, output_path: Path | str = "conocimiento.graphml"):
+def build_knowledge_graph(docs: list[Document], llm: BaseChatModel, output_path: Path | str = "./local_teacher_kuzu"):
     """
     Extrae tripletas (Entidad -> Relación -> Entidad) de los documentos usando el LLM
-    y construye un grafo usando NetworkX.
+    y construye un grafo persistente usando KùzuDB.
     """
     _log.info(f"Iniciando extracción de Grafo de Conocimiento (GraphRAG) para {len(docs)} fragmentos...")
     
@@ -35,13 +35,20 @@ def build_knowledge_graph(docs: list[Document], llm: BaseChatModel, output_path:
     
     chain = prompt | llm | StrOutputParser()
     
-    # Cargar grafo existente si vamos a anexar conocimiento de varios libros
-    if Path(output_path).exists():
-        _log.info(f"Cargando grafo existente desde {output_path} para expandirlo...")
-        G = nx.read_graphml(str(output_path))
-    else:
-        G = nx.DiGraph()
+    # Cargar base de datos Kùzu
+    db_path = str(output_path)
+    _log.info(f"Conectando a KùzuDB en {db_path}...")
+    db = kuzu.Database(db_path)
+    conn = kuzu.Connection(db)
     
+    try:
+        conn.execute("CREATE NODE TABLE Entity (name STRING, PRIMARY KEY (name))")
+        conn.execute("CREATE REL TABLE Rel (FROM Entity TO Entity, type STRING)")
+    except RuntimeError:
+        _log.info("Tablas ya existen. Expandiendo grafo...")
+    
+    aristas_creadas = 0
+
     for i, doc in enumerate(docs):
         _log.info(f"Extrayendo grafo del fragmento {i+1}/{len(docs)}...")
         try:
@@ -62,28 +69,22 @@ def build_knowledge_graph(docs: list[Document], llm: BaseChatModel, output_path:
                         destino = destino.replace("[", "").replace("]", "").strip()
                         
                         if origen and destino and relacion:
-                            # Añadir al grafo de NetworkX
-                            G.add_edge(origen, destino, relacion=relacion)
-                            tripletas_extraidas += 1
-            _log.info(f"Ok ({tripletas_extraidas} tripletas extraídas)")
-            
-            # Guardado incremental cada 20 fragmentos para evitar pérdida de datos en textos grandes
-            if (i + 1) % 20 == 0:
-                nx.write_graphml(G, str(output_path))
-                _log.info(f"Guardado incremental: {G.number_of_nodes()} nodos actuales")
+                            try:
+                                conn.execute("MERGE (a:Entity {name: $name})", parameters={"name": origen})
+                                conn.execute("MERGE (b:Entity {name: $name})", parameters={"name": destino})
+                                conn.execute(
+                                    "MATCH (a:Entity {name: $o}), (b:Entity {name: $d}) MERGE (a)-[r:Rel {type: $rel}]->(b)", 
+                                    parameters={"o": origen, "d": destino, "rel": relacion}
+                                )
+                                tripletas_extraidas += 1
+                                aristas_creadas += 1
+                            except Exception as e:
+                                _log.error(f"KùzuDB Error en arista: {e}")
+                                
+            _log.info(f"Ok ({tripletas_extraidas} tripletas extraídas e ingestadas en KùzuDB)")
                 
         except Exception as e:
             _log.error(f"Error: {e}")
             
-    _log.info(f"Grafo construido: {G.number_of_nodes()} nodos y {G.number_of_edges()} aristas.")
-    
-    # Guardar en disco
-    nx.write_graphml(G, str(output_path))
-    _log.info(f"Grafo guardado en {output_path}")
-    return G
-
-def load_knowledge_graph(path: Path | str = "conocimiento.graphml") -> nx.DiGraph:
-    """Carga el grafo desde el disco si existe."""
-    if Path(path).exists():
-        return nx.read_graphml(str(path))
-    return nx.DiGraph()
+    _log.info(f"Grafo construido en disco con {aristas_creadas} nuevas aristas.")
+    return db

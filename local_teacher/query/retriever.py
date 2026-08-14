@@ -17,7 +17,7 @@ from pathlib import Path
 from langchain_community.tools import DuckDuckGoSearchRun
 from flashrank import Ranker, RerankRequest
 
-from local_teacher.ingestion.graph_builder import load_knowledge_graph
+import kuzu
 from local_teacher.metrics import QueryMetricsTracker
 
 _log = logging.getLogger(__name__)
@@ -78,43 +78,66 @@ def _formatear_documentos(docs: list[Document]) -> str:
 
 
 def _obtener_contexto_grafo(entidades_filtro: list[str]) -> tuple[str, list[str]]:
-    """2. Consulta de Grafo de Conocimiento (GraphRAG) y Expansión de Búsqueda"""
+    """2. Consulta de Grafo de Conocimiento (GraphRAG) y Expansión de Búsqueda (Kùzu)"""
     contexto_grafo = "(No se detectaron entidades o no hay grafo disponible)"
     palabras_clave_grafo = []
 
     if not entidades_filtro:
         return contexto_grafo, palabras_clave_grafo
 
-    G = load_knowledge_graph()
-    if G.number_of_nodes() == 0:
+    db_path = "./local_teacher_kuzu"
+    if not Path(db_path).exists():
         return contexto_grafo, palabras_clave_grafo
 
-    conexiones = []
-    nodos_en_grafo = list(G.nodes())
+    try:
+        db = kuzu.Database(db_path)
+        conn = kuzu.Connection(db)
+        
+        # Test si las tablas existen
+        try:
+            conn.execute("MATCH (n:Entity) RETURN n LIMIT 1")
+        except RuntimeError:
+            return contexto_grafo, palabras_clave_grafo
+            
+        conexiones = []
+        nodos_encontrados = set()
 
-    for entidad in entidades_filtro:
-        patron = re.compile(rf"\b{re.escape(entidad)}\b", re.IGNORECASE)
-        nodos_encontrados = [n for n in nodos_en_grafo if patron.search(n)]
-
+        for entidad in entidades_filtro:
+            # Buscar entidades que coincidan
+            res = conn.execute("MATCH (n:Entity) WHERE n.name CONTAINS $ent RETURN n.name", parameters={"ent": entidad})
+            while res.has_next():
+                nodo = res.get_next()[0]
+                nodos_encontrados.add(nodo)
+                
         for nodo in nodos_encontrados:
             palabras_clave_grafo.append(nodo)
-            for _, target, data in G.out_edges(nodo, data=True):
-                palabras_clave_grafo.append(target)
-                rel = data.get("relacion", "->")
-                conexiones.append(f"- {nodo} [{rel}] {target}")
-            for source, _, data in G.in_edges(nodo, data=True):
-                palabras_clave_grafo.append(source)
-                rel = data.get("relacion", "->")
-                conexiones.append(f"- {source} [{rel}] {nodo}")
+            
+            # Relaciones salientes
+            out_res = conn.execute("MATCH (a:Entity {name: $n})-[r:Rel]->(b:Entity) RETURN a.name, r.type, b.name", parameters={"n": nodo})
+            while out_res.has_next():
+                origen, rel, destino = out_res.get_next()
+                palabras_clave_grafo.append(destino)
+                conexiones.append(f"- {origen} [{rel}] {destino}")
+                
+            # Relaciones entrantes
+            in_res = conn.execute("MATCH (a:Entity)-[r:Rel]->(b:Entity {name: $n}) RETURN a.name, r.type, b.name", parameters={"n": nodo})
+            while in_res.has_next():
+                origen, rel, destino = in_res.get_next()
+                palabras_clave_grafo.append(origen)
+                conexiones.append(f"- {origen} [{rel}] {destino}")
 
-    conexiones = list(set(conexiones))
-    if conexiones:
-        contexto_grafo = "\n".join(conexiones)
-        _log.info(
-            f"[*] Se inyectaron {len(conexiones)} conexiones del Grafo de Conocimiento al contexto."
-        )
+        conexiones = list(set(conexiones))
+        if conexiones:
+            contexto_grafo = "\n".join(conexiones)
+            _log.info(
+                f"[*] Se inyectaron {len(conexiones)} conexiones del Grafo de Conocimiento (Kùzu) al contexto."
+            )
 
-    return contexto_grafo, list(set(palabras_clave_grafo))
+        return contexto_grafo, list(set(palabras_clave_grafo))
+        
+    except Exception as e:
+        _log.error(f"Error consultando KùzuDB: {e}")
+        return contexto_grafo, palabras_clave_grafo
 
 
 def _recuperar_y_filtrar(
