@@ -26,3 +26,5 @@ flashrank
 
 # Testing
 pytest
+ragas
+datasets
