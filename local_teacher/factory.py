@@ -5,7 +5,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 def obtener_modelos(
     provider: str,
     ollama_llm: str = "deepseek-r1:8b",
-    ollama_embed: str = "nomic-embed-text",
+    ollama_embed: str = "granite-embedding:278m",
     ollama_host: str | None = None,
 ) -> tuple[BaseChatModel, Embeddings]:
     """Inicializa y devuelve el LLM y el modelo de embeddings."""
@@ -26,7 +26,7 @@ def obtener_modelos(
             
         print(f"[*] Conectando a Ollama en: {host}")
         return (
-            ChatOllama(model=ollama_llm, temperature=0, base_url=host, num_ctx=8192),
+            ChatOllama(model=ollama_llm, temperature=0, base_url=host, num_ctx=4096, keep_alive=300),
             OllamaEmbeddings(model=ollama_embed, base_url=host, keep_alive=0),
         )
         
@@ -35,7 +35,7 @@ def obtener_modelos(
 
 def obtener_llm_critico(
     provider: str,
-    ollama_critic_llm: str = "deepseek-r1:8b",
+    ollama_critic_llm: str = "granite3-guardian:2b",
     ollama_host: str | None = None,
 ) -> BaseChatModel:
     """Inicializa y devuelve el LLM específico para el supervisor (Critic)."""
@@ -53,6 +53,6 @@ def obtener_llm_critico(
         if host == "http://0.0.0.0" or host == "0.0.0.0":
             host = "http://127.0.0.1:11434"
             
-        return ChatOllama(model=ollama_critic_llm, temperature=0, base_url=host, num_ctx=8192)
+        return ChatOllama(model=ollama_critic_llm, temperature=0, base_url=host, num_ctx=8192, keep_alive=0)
         
     raise ValueError(f"[-] Proveedor no soportado: {provider}")

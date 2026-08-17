@@ -191,20 +191,35 @@ def _recuperar_y_filtrar(
     results = ranker.rerank(rerankrequest)
 
     final_docs = []
-    # Usar solo Top-K y delegar el filtrado semántico estricto al Crítico (LLM)
+    # Filtrar por score mínimo para evitar pasar documentos irrelevantes al LLM
+    MIN_RERANK_SCORE = 0.1
     for res in results[:10]:
+        if res["score"] < MIN_RERANK_SCORE:
+            continue
         meta = res["meta"]
         text = res["text"]
         doc = Document(page_content=text, metadata=meta)
         doc.metadata["rerank_score"] = res["score"]
         final_docs.append(doc)
 
+    # Si todos los docs tienen score bajo, devolver los 3 mejores de todas formas
+    if not final_docs and results:
+        for res in results[:3]:
+            meta = res["meta"]
+            text = res["text"]
+            doc = Document(page_content=text, metadata=meta)
+            doc.metadata["rerank_score"] = res["score"]
+            final_docs.append(doc)
+
     return final_docs
 
 
 def _crear_cadena_tutor(llm: BaseChatModel, busqueda_web_alternativa: bool, intencion: str = "conceptual"):
     system_base = (
-        "Eres un tutor educativo experto. Tu objetivo es guiar al alumno respondiendo ESTRICTAMENTE con los apuntes recuperados. "
+        "REGLA PRINCIPAL: Responde ÚNICAMENTE con información que aparezca en el contexto recuperado. "
+        "Si la información no está en el contexto, responde: 'Este tema no está cubierto en el material cargado.' "
+        "NUNCA uses tu conocimiento interno para complementar o enriquecer la respuesta.\n\n"
+        "Eres un tutor educativo. "
     )
     
     if intencion == "ejercicio":
@@ -215,11 +230,11 @@ def _crear_cadena_tutor(llm: BaseChatModel, busqueda_web_alternativa: bool, inte
         system_base += "Adopta un tono pedagógico y formativo: desglosa los problemas teóricos, explica el porqué de las cosas, y fomenta la comprensión profunda. Puedes hacer una pregunta de control al final para asegurar que el alumno entendió. "
         
     system_base += (
-        "\nINSTRUCCIONES FINALES OBLIGATORIAS:\n"
-        "1. Si la respuesta está en el contexto recuperado, responde basándote en él.\n"
+        "\nINSTRUCCIONES:\n"
+        "1. Basa tu respuesta EXCLUSIVAMENTE en el contexto recuperado. Puedes parafrasear y reformular para enseñar mejor, pero toda afirmación debe provenir del material.\n"
         "2. Si te preguntan de qué trata el texto o piden un resumen general, sintetiza los temas principales basados únicamente en el contexto recuperado.\n"
-        "3. DEBES incluir Citas en Línea (ej. '...el motor se enciende [2].') al final de CADA afirmación usando el número de fuente correspondiente.\n"
-        "4. Si la respuesta NO ESTÁ en el contexto o el contexto está vacío, indica explícitamente que el tema no está cubierto en el material cargado. TIENES PROHIBIDO inventar.\n"
+        "3. Incluye Citas en Línea (ej. '...el motor se enciende [2].') al final de CADA afirmación usando el número de fuente correspondiente.\n"
+        "4. Si la respuesta NO ESTÁ en el contexto, responde: 'Este tema no está cubierto en el material cargado.' NO inventes.\n"
         "5. Si no sabes, responde SÓLO con: REQUIRE_WEB_SEARCH (solo aplicable si busqueda_web_alternativa=True)."
     )
     
@@ -336,9 +351,11 @@ def _generador_procesar_consulta(
         tracker.init_latency(f"Generacion_LLM_Intento_{intento}")
         if usar_critico:
             tracker.init_latency(f"Critico_Intento_{intento}")
-        _progreso(
-            2, 4, f"Generando respuesta (Intento {intento}/3)...", saltar_linea=True
-        )
+        # Solo mostrar el paso de "Generando..." cuando el crítico está activo (hay varios intentos posibles)
+        if usar_critico:
+            _progreso(
+                2, 4, f"Generando respuesta (Intento {intento}/3)...", saltar_linea=True
+            )
 
         if intento == 2:
             if busqueda_web_alternativa and herramienta_busqueda:
@@ -382,9 +399,6 @@ def _generador_procesar_consulta(
         else:
             # Hacer streaming verdadero y devolver tokens inmediatamente
             borrador = ""
-            # Si no hay crítico, la impresión de progreso en consola interfiere con el texto, 
-            # así que forzamos un salto de línea limpio antes de empezar a escupir tokens.
-            _progreso(3, 4, "Generando respuesta en tiempo real...", saltar_linea=True)
             for token_chunk in cadena_tutor.stream(args_invoke):
                 content = token_chunk.content if hasattr(token_chunk, "content") else str(token_chunk)
                 borrador += content

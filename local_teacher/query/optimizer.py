@@ -58,8 +58,8 @@ def reescribir_consulta(llm: BaseChatModel, consulta: str) -> ConsultaEstructura
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         future = executor.submit(_invocar)
         try:
-            # 20 segundos máximo para optimizar
-            respuesta = future.result(timeout=20)
+            # 60 segundos máximo para optimizar (20s siempre fallaba en GPU con modelos 8b)
+            respuesta = future.result(timeout=60)
             executor.shutdown(wait=False)
             return ConsultaEstructurada(
                 consulta=respuesta.consulta,

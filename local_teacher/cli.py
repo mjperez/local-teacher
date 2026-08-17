@@ -84,9 +84,9 @@ def main() -> None:
         help="Permitir consultar la web si la respuesta no está en los documentos locales",
     )
     parser.add_argument(
-        "--no-critic",
+        "--critic",
         action="store_true",
-        help="Desactiva el supervisor interno (Self-RAG) para acelerar la respuesta al evitar la segunda evaluación del LLM.",
+        help="Activa el supervisor interno (Self-RAG). Más preciso pero más lento. Por defecto desactivado.",
     )
 
     # Modelos
@@ -94,9 +94,9 @@ def main() -> None:
         "--provider", default=os.getenv("LOCAL_TEACHER_PROVIDER", "ollama")
     )
     parser.add_argument("--ollama-llm", default=os.getenv("OLLAMA_LLM", "llama3.2"))
-    parser.add_argument("--ollama-critic-llm", default=os.getenv("OLLAMA_CRITIC_LLM", "deepseek-r1:8b"))
+    parser.add_argument("--ollama-critic-llm", default=os.getenv("OLLAMA_CRITIC_LLM", "granite3-guardian:2b"))
     parser.add_argument(
-        "--ollama-embed", default=os.getenv("OLLAMA_EMBED", "nomic-embed-text")
+        "--ollama-embed", default=os.getenv("OLLAMA_EMBED", "granite-embedding:278m")
     )
     parser.add_argument(
         "--ollama-host", default=os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434")
@@ -171,7 +171,7 @@ def main() -> None:
                 chat_history=chat_history,
                 busqueda_web_alternativa=args.web_fallback,
                 cache_store=cache_store,
-                usar_critico=not args.no_critic,
+                usar_critico=args.critic,
                 llm_critic=llm_critic,
             )
 
