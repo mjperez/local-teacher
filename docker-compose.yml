@@ -28,14 +28,13 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    # Para usar la GPU en Linux/WSL, descomenta el bloque deploy siguiente.
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   redis:
     image: redis:alpine
@@ -64,6 +63,10 @@ services:
       curl -s -X POST http://ollama:11434/api/pull -d '{\"name\": \"deepseek-r1:8b\"}' && \
       echo '\nDescargando llama3.2...' && \
       curl -s -X POST http://ollama:11434/api/pull -d '{\"name\": \"llama3.2\"}' && \
+      echo '\nDescargando granite-embedding:278m...' && \
+      curl -s -X POST http://ollama:11434/api/pull -d '{\"name\": \"granite-embedding:278m\"}' && \
+      echo '\nDescargando granite3-guardian:2b...' && \
+      curl -s -X POST http://ollama:11434/api/pull -d '{\"name\": \"granite3-guardian:2b\"}' && \
       echo '\n¡Modelos descargados exitosamente!' "
 
 volumes:
