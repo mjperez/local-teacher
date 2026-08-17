@@ -485,19 +485,51 @@ def cargar_archivos(
         raise FileNotFoundError(f"No existe la ruta de ingesta: {ruta_carpeta}")
 
     docs: list[Document] = []
-    items = [ruta_carpeta] if ruta_carpeta.is_file() else ruta_carpeta.rglob("*")
+    items = [ruta_carpeta] if ruta_carpeta.is_file() else list(ruta_carpeta.rglob("*"))
+    
+    # Manejo de reanudación y caché
+    cache_path = Path(str(ruta_carpeta)).with_suffix(".jsonl")
+    checkpoint_path = Path("./.loader_checkpoint.json")
+    archivos_procesados = set()
+    
+    # Intentar cargar progreso previo
+    if checkpoint_path.exists() and cache_path.exists():
+        try:
+            archivos_procesados = set(json.loads(checkpoint_path.read_text(encoding="utf-8")).get("procesados", []))
+            if archivos_procesados:
+                print(f"[*] Checkpoint de extracción encontrado: {len(archivos_procesados)} archivos ya procesados. Reanudando...")
+        except Exception:
+            pass
+    elif not cache_path.exists():
+        # Si no hay caché, empezar de cero limpiando el checkpoint
+        if checkpoint_path.exists():
+            checkpoint_path.unlink()
+            
+    items_a_procesar = []
 
     for item in items:
         if not item.is_file():
             continue
         if item.name.endswith("_toc.txt"):
             continue
-
+            
+        str_item = str(item)
+        if str_item in archivos_procesados:
+            continue
+            
+        items_a_procesar.append(item)
+        
+    if items_a_procesar:
+        print(f"[*] Extrayendo {len(items_a_procesar)} archivos pendientes...")
+        
+    for item in items_a_procesar:
         curso = None
         if ruta_carpeta.is_dir():
             curso = None if item.parent == ruta_carpeta else item.parent.name
 
         ext = item.suffix.lower()
+        nuevos_docs = []
+        
         if ext in (".txt", ".md"):
             tipo = "markdown" if ext == ".md" else "texto"
             try:
@@ -505,11 +537,11 @@ def cargar_archivos(
                 meta = {"fuente": str(item), "tipo_archivo": tipo}
                 if curso:
                     meta["curso"] = curso
-                docs.append(Document(page_content=contenido, metadata=meta))
+                nuevos_docs.append(Document(page_content=contenido, metadata=meta))
             except Exception as exc:
                 _log.error("Error leyendo archivo %s: %s", item.name, exc)
         elif ext in (".pdf", ".docx", ".pptx"):
-            docs.extend(
+            nuevos_docs.extend(
                 _cargar_docling(
                     item,
                     extraer_figuras,
@@ -520,8 +552,39 @@ def cargar_archivos(
                 )
             )
         elif ext == ".jsonl":
-            docs.extend(_cargar_jsonl(item, curso=curso))
+            nuevos_docs.extend(_cargar_jsonl(item, curso=curso))
+            
+        # Guardar en caché y actualizar checkpoint inmediatamente
+        if nuevos_docs:
+            docs.extend(nuevos_docs)
+            try:
+                with open(cache_path, "a", encoding="utf-8") as f:
+                    for d in nuevos_docs:
+                        json.dump(
+                            {"page_content": d.page_content, "metadata": d.metadata},
+                            f,
+                            ensure_ascii=False,
+                        )
+                        f.write("\n")
+                
+                archivos_procesados.add(str(item))
+                checkpoint_path.write_text(
+                    json.dumps({"procesados": list(archivos_procesados)}, ensure_ascii=False),
+                    encoding="utf-8"
+                )
+            except Exception as e:
+                _log.warning(f"No se pudo guardar el progreso de {item.name}: {e}")
 
+    # Al terminar la carga, devolver todos los documentos (los de esta sesión + los cacheados anteriormente si existen)
+    # Si acabamos de procesar todos los archivos desde 0, `docs` tiene todos los documentos.
+    # Pero si reanudamos, `docs` solo tiene los nuevos. En ese caso, leemos el caché completo.
+    if archivos_procesados and not items_a_procesar and cache_path.exists():
+        # Todo ya estaba en caché, o se reanudó sin nuevos archivos
+        return _cargar_jsonl(cache_path)
+    elif archivos_procesados and items_a_procesar and cache_path.exists():
+        # Mezcla de archivos reanudados + nuevos. Es más seguro simplemente cargar el caché completo que contiene todo.
+        return _cargar_jsonl(cache_path)
+        
     return docs
 
 

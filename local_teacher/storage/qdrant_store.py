@@ -39,8 +39,8 @@ def get_qdrant_retriever(
         value_deserializer=_doc_deserializer
     )
 
-    # El child_splitter corta los padres (1500 chars) en trozos pequeños para Qdrant (300 chars)
-    child_splitter = RecursiveCharacterTextSplitter(chunk_size=300, chunk_overlap=50)
+    # El child_splitter corta los padres (1500 chars) en trozos para Qdrant (500 chars)
+    child_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=100)
 
     if documentos and force_recreate:
         # Truco para forzar la recreación de la colección en Qdrant con las configuraciones correctas
@@ -70,15 +70,53 @@ def get_qdrant_retriever(
     )
 
     if documentos:
+        from pathlib import Path
+        checkpoint_path = Path("./.qdrant_checkpoint.json")
+        processed_batches = set()
+        
+        if force_recreate:
+            if checkpoint_path.exists():
+                checkpoint_path.unlink()
+        elif checkpoint_path.exists():
+            try:
+                processed_batches = set(json.loads(checkpoint_path.read_text(encoding="utf-8")).get("processed_batches", []))
+                if processed_batches:
+                    print(f"[*] Checkpoint encontrado: {len(processed_batches)} lotes ya ingestados en Qdrant. Reanudando...")
+            except Exception:
+                pass
+
         print(f"[*] Ingestando {len(documentos)} documentos jerárquicos en lotes...")
         batch_size = 50
+        total_lotes = (len(documentos) + batch_size - 1) // batch_size
+        saltados = len(processed_batches)
+        if saltados:
+            print(f"    ({saltados} ya procesados, {total_lotes - saltados} pendientes)")
 
         for i in range(0, len(documentos), batch_size):
+            lote_num = (i // batch_size) + 1
+            if lote_num in processed_batches:
+                continue
+
             lote = documentos[i : i + batch_size]
             retriever.add_documents(lote, ids=None)
-            print(
-                f"    - Lote { (i // batch_size) + 1 }/{ (len(documentos) + batch_size - 1) // batch_size } completado."
-            )
+            
+            # Guardar checkpoint
+            processed_batches.add(lote_num)
+            try:
+                checkpoint_path.write_text(
+                    json.dumps({"processed_batches": list(processed_batches)}, ensure_ascii=False),
+                    encoding="utf-8"
+                )
+            except Exception:
+                pass
+                
+            print(f"\r    - Lote {lote_num}/{total_lotes} completado.", end="", flush=True)
             time.sleep(0.5)
+            
+        # Limpiar checkpoint al terminar
+        if checkpoint_path.exists():
+            checkpoint_path.unlink()
+            
+        print()  # salto de línea al terminar
 
     return retriever

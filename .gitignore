@@ -9,4 +9,8 @@ tmp*
 *.jsonl
 *.graphml
 docs/
-.prettierrc.local_teacher_parents/
+.prettierrc
+.local_teacher_parents/
+local_teacher_kuzu/
+local_teacher_kuzu.wal
+.*_checkpoint.json
