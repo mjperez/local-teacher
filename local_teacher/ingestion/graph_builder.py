@@ -1,12 +1,9 @@
-import concurrent.futures
 import json
 import kuzu
 import logging
 from pathlib import Path
 from langchain_core.documents import Document
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
 
 _log = logging.getLogger(__name__)
 
@@ -42,35 +39,26 @@ def _clear_checkpoint() -> None:
     except Exception:
         pass
 
+# Inicialización Lazy de GLiNER
+_gliner_model = None
+
+def _get_gliner():
+    global _gliner_model
+    if _gliner_model is None:
+        _log.info("Cargando modelo GLiNER (esto puede tomar un momento la primera vez)...")
+        from gliner import GLiNER
+        # "urchade/gliner_medium-v2.1" es rápido y muy preciso
+        _gliner_model = GLiNER.from_pretrained("urchade/gliner_medium-v2.1")
+    return _gliner_model
+
 def build_knowledge_graph(docs: list[Document], llm: BaseChatModel, output_path: Path | str = "./local_teacher_kuzu"):
     """
-    Extrae tripletas (Entidad -> Relación -> Entidad) de los documentos usando el LLM
-    y construye un grafo persistente usando KùzuDB.
+    Extrae un Grafo de Co-ocurrencia de Entidades usando GLiNER.
     
     Soporta reanudación: si el proceso se interrumpe, al volver a correr continuará
     desde el último fragmento procesado.
     """
     _log.info(f"Iniciando extracción de Grafo de Conocimiento (GraphRAG) para {len(docs)} fragmentos...")
-    
-    # Prompt optimizado para modelos pequeños (3B) usando formato de texto simple en lugar de JSON
-    prompt = ChatPromptTemplate.from_messages([
-        (
-            "system",
-            "Eres un experto en extraer Grafos de Conocimiento. "
-            "Tu tarea es leer el texto y extraer las relaciones clave entre conceptos o entidades.\n"
-            "Reglas:\n"
-            "1. Extrae solo las relaciones más importantes.\n"
-            "2. Usa nombres cortos para las entidades (ej. 'Compiler', 'Source Code').\n"
-            "3. RESPONDE ÚNICAMENTE usando este formato exacto por línea, sin markdown ni explicaciones:\n"
-            "[Entidad A] ||| [Relación] ||| [Entidad B]\n\n"
-            "Ejemplo:\n"
-            "Compiler ||| translates ||| Source Code\n"
-            "Ken Thompson ||| wrote ||| Reflections on Trusting Trust"
-        ),
-        ("human", "Texto:\n{text}")
-    ])
-    
-    chain = prompt | llm | StrOutputParser()
     
     # Cargar base de datos Kùzu
     db_path = str(output_path)
@@ -95,65 +83,55 @@ def build_knowledge_graph(docs: list[Document], llm: BaseChatModel, output_path:
     if saltados:
         print(f"    ({saltados} ya procesados, {total_docs - saltados} pendientes)")
     
+    labels = ["Person", "Organization", "Technology", "Concept", "Tool", "Process", "Algorithm", "Metric"]
+    
+    model = _get_gliner()
+    
     for i, doc in enumerate(docs):
         # Saltar fragmentos ya procesados
         if i in processed_indices:
             continue
-
+            
         print(f"\r    - Fragmento {i+1}/{total_docs} ({len(processed_indices)}/{total_docs} completados)...", end="", flush=True)
-        _log.info(f"Extrayendo grafo del fragmento {i+1}/{total_docs}...")
         try:
-            # Timeout de 30s por fragmento para evitar que el LLM congele el proceso
-            executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-            future = executor.submit(chain.invoke, {"text": doc.page_content})
-            try:
-                raw_output = future.result(timeout=30)
-            except concurrent.futures.TimeoutError:
-                print(f"\r    ⚠ Fragmento {i+1}/{total_docs} saltado (timeout).         ", flush=True)
-                executor.shutdown(wait=False)
-                # Marcar como procesado para no reintentar en futuras ejecuciones
-                processed_indices.add(i)
-                _save_checkpoint(processed_indices)
-                continue
-            finally:
-                executor.shutdown(wait=False)
+            # Predecir entidades
+            entities = model.predict_entities(doc.page_content, labels, threshold=0.5)
             
-            # Parseo tolerante a fallos
+            # Limpiar nombres
+            nombres = set([e["text"].strip().title() for e in entities if len(e["text"]) > 2])
+            nombres = list(nombres)
+            
+            # Crear grafo de co-ocurrencia: vincular todas las entidades encontradas en este fragmento
             tripletas_extraidas = 0
-            for linea in raw_output.split('\n'):
-                linea = linea.strip()
-                if "|||" in linea:
-                    partes = [p.strip() for p in linea.split("|||")]
-                    if len(partes) >= 3:
-                        origen, relacion, destino = partes[0], partes[1], partes[2]
-                        # Limpiar corchetes si el modelo los incluyó por error
-                        origen = origen.replace("[", "").replace("]", "").strip()
-                        relacion = relacion.replace("[", "").replace("]", "").strip()
-                        destino = destino.replace("[", "").replace("]", "").strip()
-                        
-                        if origen and destino and relacion:
-                            try:
-                                conn.execute("MERGE (a:Entity {name: $name})", parameters={"name": origen})
-                                conn.execute("MERGE (b:Entity {name: $name})", parameters={"name": destino})
-                                conn.execute(
-                                    "MATCH (a:Entity {name: $o}), (b:Entity {name: $d}) MERGE (a)-[r:Rel {type: $rel}]->(b)", 
-                                    parameters={"o": origen, "d": destino, "rel": relacion}
-                                )
-                                tripletas_extraidas += 1
-                                aristas_creadas += 1
-                            except Exception as e:
-                                _log.error(f"KùzuDB Error en arista: {e}")
-                                
-            _log.info(f"Ok ({tripletas_extraidas} tripletas extraídas e ingestadas en KùzuDB)")
+            for j in range(len(nombres)):
+                for k in range(j + 1, len(nombres)):
+                    origen = nombres[j]
+                    destino = nombres[k]
+                    relacion = "CO_OCCURS_WITH"
+                    
+                    try:
+                        conn.execute("MERGE (a:Entity {name: $name})", parameters={"name": origen})
+                        conn.execute("MERGE (b:Entity {name: $name})", parameters={"name": destino})
+                        conn.execute(
+                            "MATCH (a:Entity {name: $o}), (b:Entity {name: $d}) MERGE (a)-[r:Rel {type: $rel}]->(b)", 
+                            parameters={"o": origen, "d": destino, "rel": relacion}
+                        )
+                        tripletas_extraidas += 1
+                        aristas_creadas += 1
+                    except Exception as e:
+                        _log.error(f"KùzuDB Error en arista: {e}")
             
-            # Marcar como procesado y guardar checkpoint
             processed_indices.add(i)
-            _save_checkpoint(processed_indices)
+            # Guardamos cada 10 iteraciones para no hacer IO constante
+            if i % 10 == 0:
+                _save_checkpoint(processed_indices)
                 
         except Exception as e:
-            _log.error(f"Error: {e}")
-        
-    print(f"\n[+] Grafo construido con {aristas_creadas} nuevas aristas.")
+            _log.error(f"Error procesando fragmento {i}: {e}")
+            
+    _save_checkpoint(processed_indices)
+            
+    print(f"\n[+] Grafo construido con {aristas_creadas} nuevas aristas de co-ocurrencia.")
     _log.info(f"Grafo construido en disco con {aristas_creadas} nuevas aristas.")
     
     # Limpiar checkpoint al terminar exitosamente

@@ -1,12 +1,24 @@
-"""Capa de carga: lee archivos y los convierte en documentos."""
-
 import json
 import logging
 import os
 import re
+import hashlib
 from pathlib import Path
 from typing import Any
 from langchain_core.documents import Document
+
+def _calcular_hash(ruta_archivo: Path) -> str:
+    """Calcula el SHA-256 de un archivo leyendo por fragmentos."""
+    hasher = hashlib.sha256()
+    try:
+        with open(ruta_archivo, 'rb') as f:
+            for chunk in iter(lambda: f.read(65536), b""):
+                hasher.update(chunk)
+        return hasher.hexdigest()
+    except Exception as e:
+        _log.warning(f"No se pudo calcular hash para {ruta_archivo}: {e}")
+        # Retorna el nombre si falla, como fallback
+        return str(ruta_archivo)
 
 # Hacer que Docling muestre progreso en la consola (movido a CLI u otro sitio)
 
@@ -398,18 +410,6 @@ def _cargar_docling(
             "heading_map": heading_map,
         }
 
-        # Guardar TOC para el agente
-        toc_levels = []
-        for _, h in heading_map:
-            if h and len(h) > 0 and h[0] not in toc_levels:
-                toc_levels.append(h[0])
-        if toc_levels:
-            try:
-                toc_path = ruta.parent / f"{ruta.stem}_toc.txt"
-                toc_path.write_text("\n".join(toc_levels), encoding="utf-8")
-            except OSError as exc:
-                _log.warning("No se pudo escribir el TOC %s: %s", toc_path, exc)
-
         titulo = _extraer_titulo_archivo(ruta)
         if titulo:
             meta["titulo"] = titulo
@@ -447,6 +447,11 @@ def _cargar_jsonl(ruta: Path, curso: str | None = None) -> list[Document]:
             if not line:
                 continue
             data = json.loads(line)
+            
+            if "page_content" in data and "metadata" in data:
+                docs.append(Document(page_content=data["page_content"], metadata=data["metadata"]))
+                continue
+                
             if "question" in data and "answer" in data:
                 resp = (
                     ", ".join(data["answer"])
@@ -467,6 +472,186 @@ def _cargar_jsonl(ruta: Path, curso: str | None = None) -> list[Document]:
 # ---------------------------------------------------------------------------
 # API pública
 # ---------------------------------------------------------------------------
+
+def _extraer_transcripcion_youtube(url: str) -> str | None:
+    try:
+        from youtube_transcript_api import YouTubeTranscriptApi
+        import re
+        match = re.search(r"(?:v=|\/)([0-9A-Za-z_-]{11}).*", url)
+        if not match:
+            return None
+        video_id = match.group(1)
+        
+        # En versión 1.2.4, list_transcripts no existe y la forma correcta es:
+        if hasattr(YouTubeTranscriptApi, 'list_transcripts'):
+            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        else:
+            transcript_list = YouTubeTranscriptApi().list(video_id)
+            
+        try:
+            # Intentar es, en
+            transcript = transcript_list.find_transcript(['es', 'en'])
+        except Exception:
+            # Fallback a la primera disponible (puede ser auto-generada u otro idioma)
+            transcript = next(iter(transcript_list))
+            
+        texto_list = transcript.fetch()
+        
+        # Soportar tanto dataclasses (v1.2.4) como diccionarios (otras versiones)
+        if texto_list and hasattr(texto_list[0], 'text'):
+            texto = " ".join([t.text for t in texto_list])
+        else:
+            texto = " ".join([t['text'] for t in texto_list])
+            
+        return texto
+    except Exception as e:
+        _log.warning(f"No se pudo extraer transcripción de YouTube para {url}: {e}")
+def _cargar_video_local(ruta: Path, curso: str | None = None) -> list[Document]:
+    import whisper
+    import cv2
+    import easyocr
+    from difflib import SequenceMatcher
+    
+    docs = []
+    _log.info(f"Procesando video local: {ruta.name}")
+    
+    # 1. Extraer audio temporal
+    audio_path = ruta.with_suffix(".wav")
+    try:
+        import subprocess
+        subprocess.run([
+            "ffmpeg", "-y", "-i", str(ruta), "-vn", "-acodec", "pcm_s16le", "-ar", "16000", "-ac", "1", str(audio_path)
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        # 2. Transcribir audio
+        _log.info("Transcribiendo audio del video...")
+        model = whisper.load_model("base")
+        transcription = model.transcribe(str(audio_path), language="es")
+        texto_audio = transcription["text"]
+        
+        meta_audio = {"fuente": str(ruta), "tipo_archivo": "video_audio"}
+        if curso:
+            meta_audio["curso"] = curso
+        docs.append(Document(page_content=f"Transcripción de audio ({ruta.name}):\n{texto_audio}", metadata=meta_audio))
+    except Exception as e:
+        _log.warning(f"Error procesando audio de {ruta.name}: {e}")
+    finally:
+        if audio_path.exists():
+            try:
+                audio_path.unlink()
+            except:
+                pass
+            
+    # 3. Procesar video (frames) para OCR
+    try:
+        _log.info("Procesando frames del video (OCR)...")
+        reader = easyocr.Reader(['es', 'en'], gpu=True)
+        cap = cv2.VideoCapture(str(ruta))
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        
+        if fps <= 0:
+            fps = 30
+            
+        # 1 frame cada 30 segundos
+        frame_interval = int(fps * 30)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        
+        texto_visual = []
+        last_text = ""
+        frame_count = 0
+        
+        while frame_count < total_frames:
+            # Saltar directamente al frame deseado en lugar de decodificar todos los intermedios
+            cap.set(cv2.CAP_PROP_POS_FRAMES, frame_count)
+            ret, frame = cap.read()
+            if not ret:
+                break
+                
+            # OCR en este frame
+            result = reader.readtext(frame, detail=0)
+            text = " ".join(result)
+            
+            if text.strip():
+                # Deduplicación (80% similitud)
+                similitud = SequenceMatcher(None, text, last_text).ratio()
+                if similitud < 0.8:
+                    minuto = (frame_count / fps) / 60
+                    texto_visual.append(f"[Minuto {minuto:.1f}] Texto en pantalla: {text}")
+                    last_text = text
+                        
+            frame_count += frame_interval
+            
+        cap.release()
+        
+        if texto_visual:
+            meta_visual = {"fuente": str(ruta), "tipo_archivo": "video_visual"}
+            if curso:
+                meta_visual["curso"] = curso
+            contenido_visual = "\n".join(texto_visual)
+            docs.append(Document(page_content=f"Contenido visual (diapositivas) de {ruta.name}:\n{contenido_visual}", metadata=meta_visual))
+            
+    except Exception as e:
+        _log.warning(f"Error procesando video visualmente {ruta.name}: {e}")
+        
+    return docs
+
+
+def _procesar_un_archivo(args):
+    (
+        item,
+        ruta_carpeta,
+        extraer_figuras,
+        extraer_tablas,
+        carpeta_figuras,
+        enriquecer_formulas,
+    ) = args
+
+    curso = None
+    if isinstance(ruta_carpeta, Path) and ruta_carpeta.is_dir():
+        curso = None if item.parent == ruta_carpeta else item.parent.name
+
+    ext = item.suffix.lower()
+    nuevos_docs = []
+    
+    if ext in (".txt", ".md"):
+        tipo = "markdown" if ext == ".md" else "texto"
+        try:
+            contenido = item.read_text(encoding="utf-8", errors="replace")
+            meta = {"fuente": str(item), "tipo_archivo": tipo}
+            if curso:
+                meta["curso"] = curso
+                
+            # Extraer enlaces de YouTube del contenido
+            import re
+            youtube_urls = re.findall(r"(https?://(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)[0-9A-Za-z_-]{11}[^\s]*)", contenido)
+            for y_url in set(youtube_urls):
+                transcripcion = _extraer_transcripcion_youtube(y_url)
+                if transcripcion:
+                    y_meta = {"fuente": y_url, "tipo_archivo": "youtube"}
+                    if curso:
+                        y_meta["curso"] = curso
+                    nuevos_docs.append(Document(page_content=f"Transcripción de video ({y_url}):\n{transcripcion}", metadata=y_meta))
+            
+            nuevos_docs.append(Document(page_content=contenido, metadata=meta))
+        except Exception as exc:
+            _log.error("Error leyendo archivo %s: %s", item.name, exc)
+    elif ext in (".pdf", ".docx", ".pptx"):
+        nuevos_docs.extend(
+            _cargar_docling(
+                item,
+                extraer_figuras,
+                extraer_tablas,
+                carpeta_figuras,
+                enriquecer_formulas,
+                curso=curso,
+            )
+        )
+    elif ext in (".mp4", ".mkv"):
+        nuevos_docs.extend(_cargar_video_local(item, curso=curso))
+    elif ext == ".jsonl":
+        nuevos_docs.extend(_cargar_jsonl(item, curso=curso))
+        
+    return item, nuevos_docs
 
 
 def cargar_archivos(
@@ -506,6 +691,7 @@ def cargar_archivos(
             checkpoint_path.unlink()
             
     items_a_procesar = []
+    item_hashes = {}
 
     for item in items:
         if not item.is_file():
@@ -513,67 +699,52 @@ def cargar_archivos(
         if item.name.endswith("_toc.txt"):
             continue
             
-        str_item = str(item)
-        if str_item in archivos_procesados:
+        file_hash = _calcular_hash(item)
+        if file_hash in archivos_procesados:
             continue
             
         items_a_procesar.append(item)
+        item_hashes[item] = file_hash
         
+    import concurrent.futures
     if items_a_procesar:
         print(f"[*] Extrayendo {len(items_a_procesar)} archivos pendientes...")
         
-    for item in items_a_procesar:
-        curso = None
-        if ruta_carpeta.is_dir():
-            curso = None if item.parent == ruta_carpeta else item.parent.name
-
-        ext = item.suffix.lower()
-        nuevos_docs = []
-        
-        if ext in (".txt", ".md"):
-            tipo = "markdown" if ext == ".md" else "texto"
-            try:
-                contenido = item.read_text(encoding="utf-8", errors="replace")
-                meta = {"fuente": str(item), "tipo_archivo": tipo}
-                if curso:
-                    meta["curso"] = curso
-                nuevos_docs.append(Document(page_content=contenido, metadata=meta))
-            except Exception as exc:
-                _log.error("Error leyendo archivo %s: %s", item.name, exc)
-        elif ext in (".pdf", ".docx", ".pptx"):
-            nuevos_docs.extend(
-                _cargar_docling(
-                    item,
-                    extraer_figuras,
-                    extraer_tablas,
-                    carpeta_figuras,
-                    enriquecer_formulas,
-                    curso=curso,
-                )
+        args_list = [
+            (
+                item,
+                ruta_carpeta,
+                extraer_figuras,
+                extraer_tablas,
+                carpeta_figuras,
+                enriquecer_formulas,
             )
-        elif ext == ".jsonl":
-            nuevos_docs.extend(_cargar_jsonl(item, curso=curso))
-            
-        # Guardar en caché y actualizar checkpoint inmediatamente
-        if nuevos_docs:
-            docs.extend(nuevos_docs)
-            try:
-                with open(cache_path, "a", encoding="utf-8") as f:
-                    for d in nuevos_docs:
-                        json.dump(
-                            {"page_content": d.page_content, "metadata": d.metadata},
-                            f,
-                            ensure_ascii=False,
+            for item in items_a_procesar
+        ]
+        
+        # Usar ProcessPoolExecutor con max_workers=1 para evitar OOM de CUDA
+        with concurrent.futures.ProcessPoolExecutor(max_workers=1) as executor:
+            for item, nuevos_docs in executor.map(_procesar_un_archivo, args_list):
+                if nuevos_docs:
+                    docs.extend(nuevos_docs)
+                    try:
+                        with open(cache_path, "a", encoding="utf-8") as f:
+                            for d in nuevos_docs:
+                                json.dump(
+                                    {"page_content": d.page_content, "metadata": d.metadata},
+                                    f,
+                                    ensure_ascii=False,
+                                )
+                                f.write("\n")
+                        
+                        file_hash = item_hashes[item]
+                        archivos_procesados.add(file_hash)
+                        checkpoint_path.write_text(
+                            json.dumps({"procesados": list(archivos_procesados)}, ensure_ascii=False),
+                            encoding="utf-8"
                         )
-                        f.write("\n")
-                
-                archivos_procesados.add(str(item))
-                checkpoint_path.write_text(
-                    json.dumps({"procesados": list(archivos_procesados)}, ensure_ascii=False),
-                    encoding="utf-8"
-                )
-            except Exception as e:
-                _log.warning(f"No se pudo guardar el progreso de {item.name}: {e}")
+                    except Exception as e:
+                        _log.warning(f"No se pudo guardar el progreso de {item.name}: {e}")
 
     # Al terminar la carga, devolver todos los documentos (los de esta sesión + los cacheados anteriormente si existen)
     # Si acabamos de procesar todos los archivos desde 0, `docs` tiene todos los documentos.

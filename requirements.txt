@@ -26,5 +26,17 @@ flashrank
 
 # Testing
 pytest
-ragas
-datasets
+
+# Resiliencia / Reintentos
+tenacity
+
+# Extracción de YouTube
+youtube-transcript-api
+
+# Grafos de Conocimiento Ultrarrápidos (NER)
+gliner
+
+# Procesamiento de Video Local
+openai-whisper
+easyocr
+opencv-python

@@ -1,5 +1,5 @@
 import os
-import time
+from tenacity import retry, wait_exponential, stop_after_attempt
 
 from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
@@ -92,13 +92,17 @@ def get_qdrant_retriever(
         if saltados:
             print(f"    ({saltados} ya procesados, {total_lotes - saltados} pendientes)")
 
+        @retry(wait=wait_exponential(multiplier=1, min=1, max=10), stop=stop_after_attempt(5))
+        def _ingestar_lote_seguro(lote_docs):
+            retriever.add_documents(lote_docs, ids=None)
+
         for i in range(0, len(documentos), batch_size):
             lote_num = (i // batch_size) + 1
             if lote_num in processed_batches:
                 continue
 
             lote = documentos[i : i + batch_size]
-            retriever.add_documents(lote, ids=None)
+            _ingestar_lote_seguro(lote)
             
             # Guardar checkpoint
             processed_batches.add(lote_num)
@@ -111,7 +115,6 @@ def get_qdrant_retriever(
                 pass
                 
             print(f"\r    - Lote {lote_num}/{total_lotes} completado.", end="", flush=True)
-            time.sleep(0.5)
             
         # Limpiar checkpoint al terminar
         if checkpoint_path.exists():

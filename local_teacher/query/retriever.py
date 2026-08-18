@@ -244,9 +244,11 @@ def _crear_cadena_tutor(llm: BaseChatModel, busqueda_web_alternativa: bool, inte
             MessagesPlaceholder(variable_name="chat_history"),
             (
                 "human",
-                "Contexto de texto recuperado:\n{context}\n\n"
-                "Conexiones Conceptuales Transversales (GraphRAG):\n{graph_context}\n\n"
-                "PREGUNTA DEL ALUMNO: {input}\n\n"
+                "Utiliza los siguientes documentos recuperados para responder a mi pregunta.\n"
+                "<documentos>\n{context}\n</documentos>\n\n"
+                "A continuación hay relaciones cruzadas de conceptos extraídas del grafo de conocimiento que podrían ser útiles:\n"
+                "<relaciones_grafo>\n{graph_context}\n</relaciones_grafo>\n\n"
+                "Mi pregunta es:\n{input}\n\n"
                 "{feedback}",
             ),
         ]
@@ -254,243 +256,193 @@ def _crear_cadena_tutor(llm: BaseChatModel, busqueda_web_alternativa: bool, inte
     return prompt_tutor | llm
 
 
-def _generador_procesar_consulta(
-    retriever: BaseRetriever,
-    llm: BaseChatModel,
-    consulta: str,
-    chat_history: list = None,
-    busqueda_web_alternativa: bool = False,
-    cache_store: BaseRetriever = None,
-    progreso_callback=None,
-    usar_critico: bool = True,
-    llm_critic: BaseChatModel = None,
-):
-    tracker = QueryMetricsTracker(consulta, llm, llm_critic, usar_critico)
-
-    if chat_history is None:
-        chat_history = []
-
-    def _progreso(
-        paso: int, total: int = 4, mensaje: str = "", saltar_linea: bool = False
+class PipelineConsulta:
+    def __init__(
+        self,
+        retriever: BaseRetriever,
+        llm: BaseChatModel,
+        busqueda_web_alternativa: bool = False,
+        cache_store: BaseRetriever = None,
+        usar_critico: bool = True,
+        llm_critic: BaseChatModel = None,
     ):
-        if progreso_callback:
-            progreso_callback(paso, total, mensaje, saltar_linea)
+        self.retriever = retriever
+        self.llm = llm
+        self.busqueda_web_alternativa = busqueda_web_alternativa
+        self.cache_store = cache_store
+        self.usar_critico = usar_critico
+        self.llm_critic = llm_critic
+        self.herramienta_busqueda = DuckDuckGoSearchRun() if busqueda_web_alternativa else None
 
-    if cache_store:
-        _progreso(0, 4, "Consultando Caché Semántico L1...")
-        try:
-            cache_results = cache_store.similarity_search_with_score(consulta, k=1)
-            if cache_results:
-                doc, score = cache_results[0]
-                if score > 0.95:
-                    _log.info(f"Cache Hit! Score: {score:.3f}")
-                    _progreso(
-                        4,
-                        4,
-                        "¡Respuesta rápida desde Caché Semántico!",
-                        saltar_linea=True,
-                    )
-                    respuesta_cacheada = doc.metadata.get("respuesta", doc.page_content)
-                    tracker.set_meta("cache_hit", True)
-                    tracker.finish_and_log("CACHE_HIT")
-                    yield {"answer": respuesta_cacheada}
-                    yield {"context_docs": []}
-                    return
-        except Exception as e:
-            _log.warning(f"Error consultando caché semántico: {e}")
+    def _progreso(self, paso: int, total: int = 4, mensaje: str = "", saltar_linea: bool = False):
+        if self.progreso_callback:
+            self.progreso_callback(paso, total, mensaje, saltar_linea)
 
-    _progreso(0, 4, "Optimizando pregunta...")
-    t_opt_start = time.time()
+    def ejecutar(self, consulta: str, chat_history: list = None, progreso_callback=None) -> Iterator[dict]:
+        self.progreso_callback = progreso_callback
+        tracker = QueryMetricsTracker(consulta, self.llm, self.llm_critic, self.usar_critico)
+        chat_history = chat_history or []
 
-    consulta_estructurada = reescribir_consulta(llm, consulta)
-    consulta_optimizada = consulta_estructurada.consulta
-    tracker.set_meta("optimized_query", consulta_optimizada)
-    capitulo_filtro = consulta_estructurada.capitulo
-    entidades_filtro = consulta_estructurada.entidades
-    intencion_filtro = getattr(consulta_estructurada, "intencion", "conceptual")
+        # 1. Caché
+        if self.cache_store:
+            self._progreso(0, 4, "Consultando Caché Semántico L1...")
+            try:
+                cache_results = self.cache_store.similarity_search_with_score(consulta, k=1)
+                if cache_results:
+                    doc, score = cache_results[0]
+                    if score > 0.95:
+                        _log.info(f"Cache Hit! Score: {score:.3f}")
+                        self._progreso(4, 4, "¡Respuesta rápida desde Caché Semántico!", saltar_linea=True)
+                        respuesta_cacheada = doc.metadata.get("respuesta", doc.page_content)
+                        tracker.set_meta("cache_hit", True)
+                        tracker.finish_and_log("CACHE_HIT")
+                        yield {"answer": respuesta_cacheada}
+                        yield {"context_docs": []}
+                        return
+            except Exception as e:
+                _log.warning(f"Error consultando caché semántico: {e}")
 
-    tracker.add_latency("Optimizacion_Reescritura", t_opt_start)
-
-    _progreso(1, 4, "Buscando en Grafo de Conocimiento...")
-    t_grafo_start = time.time()
-
-    contexto_grafo, palabras_clave_grafo = _obtener_contexto_grafo(entidades_filtro)
-    if palabras_clave_grafo:
-        expansion = " ".join(palabras_clave_grafo[:5])
-        consulta_optimizada = consulta_optimizada + " " + expansion
+        # 2. Optimización
+        self._progreso(0, 4, "Optimizando pregunta...")
+        t_opt_start = time.time()
+        consulta_estructurada = reescribir_consulta(self.llm, consulta, chat_history)
+        consulta_optimizada = consulta_estructurada.consulta
         tracker.set_meta("optimized_query", consulta_optimizada)
+        capitulo_filtro = consulta_estructurada.capitulo
+        entidades_filtro = consulta_estructurada.entidades
+        intencion_filtro = getattr(consulta_estructurada, "intencion", "conceptual")
+        tracker.add_latency("Optimizacion_Reescritura", t_opt_start)
 
-    tracker.add_latency("Recuperacion_Grafo", t_grafo_start)
+        # 3. Grafo
+        self._progreso(1, 4, "Buscando en Grafo de Conocimiento...")
+        t_grafo_start = time.time()
+        contexto_grafo, palabras_clave_grafo = _obtener_contexto_grafo(entidades_filtro)
+        if palabras_clave_grafo:
+            expansion = " ".join(palabras_clave_grafo[:5])
+            consulta_optimizada = consulta_optimizada + " " + expansion
+            tracker.set_meta("optimized_query", consulta_optimizada)
+        tracker.add_latency("Recuperacion_Grafo", t_grafo_start)
 
-    _progreso(1, 4, "Recuperando documentos...")
-    t_vec_start = time.time()
-    docs = _recuperar_y_filtrar(
-        retriever, consulta_optimizada, capitulo_filtro, entidades_filtro
-    )
-    tracker.add_latency("Recuperacion_Vectorial", t_vec_start)
+        # 4. Recuperación Híbrida
+        self._progreso(1, 4, "Recuperando documentos...")
+        t_vec_start = time.time()
+        docs = _recuperar_y_filtrar(self.retriever, consulta_optimizada, capitulo_filtro, entidades_filtro)
+        tracker.add_latency("Recuperacion_Vectorial", t_vec_start)
 
-    if not docs:
-        _progreso(4, 4, "¡Finalizado!", saltar_linea=True)
-        yield {
-            "answer": "No he encontrado información sobre este tema en el material cargado. Al tratarse de un tutor basado estrictamente en el contenido provisto, no puedo responder esta pregunta."
-        }
-        tracker.finish_and_log("REJECTED_SAFE")
-        yield {"context_docs": []}
-        return
-
-    cadena_tutor = _crear_cadena_tutor(llm, busqueda_web_alternativa, intencion_filtro)
-    herramienta_busqueda = DuckDuckGoSearchRun() if busqueda_web_alternativa else None
-
-    texto_contexto = _formatear_documentos(docs)
-    tracker.set_meta("num_docs", len(docs))
-    tracker.set_meta("context_size_chars", len(texto_contexto))
-    mensaje_feedback = ""
-
-    for intento in range(1, 4):
-        tracker.set_meta("attempts", intento)
-        tracker.init_latency(f"Generacion_LLM_Intento_{intento}")
-        if usar_critico:
-            tracker.init_latency(f"Critico_Intento_{intento}")
-        # Solo mostrar el paso de "Generando..." cuando el crítico está activo (hay varios intentos posibles)
-        if usar_critico:
-            _progreso(
-                2, 4, f"Generando respuesta (Intento {intento}/3)...", saltar_linea=True
-            )
-
-        if intento == 2:
-            if busqueda_web_alternativa and herramienta_busqueda:
-                _progreso(
-                    2,
-                    4,
-                    "Consultando información adicional en la web...",
-                    saltar_linea=True,
-                )
-                try:
-                    t_web_start = time.time()
-                    resultados_web = herramienta_busqueda.invoke(consulta_optimizada)
-                    tracker.add_latency("Generacion_BusquedaWeb", t_web_start)
-                    tracker.set_meta("web_search_used", True)
-                    texto_contexto += (
-                        f"\n\n--- RESULTADOS DE BÚSQUEDA WEB ---\n{resultados_web}"
-                    )
-                    tracker.set_meta("context_size_chars", len(texto_contexto))
-                except Exception as e:
-                    _log.warning(f"Falló la búsqueda web: {e}")
-            else:
-                respuesta_segura = "No poseo información suficiente en los apuntes para responder a tu pregunta sin inventar."
-                _progreso(4, 4, "¡Finalizado!", saltar_linea=True)
-                yield {"answer": respuesta_segura}
-                yield {"context_docs": []}
-                return
-
-        t_gen_start = time.time()
-        
-        args_invoke = {
-            "chat_history": chat_history,
-            "input": consulta,
-            "context": texto_contexto,
-            "graph_context": contexto_grafo,
-            "feedback": mensaje_feedback,
-        }
-
-        if usar_critico:
-            respuesta = cadena_tutor.invoke(args_invoke)
-            borrador = respuesta.content if hasattr(respuesta, "content") else str(respuesta)
-        else:
-            # Hacer streaming verdadero y devolver tokens inmediatamente
-            borrador = ""
-            for token_chunk in cadena_tutor.stream(args_invoke):
-                content = token_chunk.content if hasattr(token_chunk, "content") else str(token_chunk)
-                borrador += content
-                yield {"answer": content}
-
-        tracker.add_latency(f"Generacion_LLM_Intento_{intento}", t_gen_start)
-
-        if (
-            "No poseo información suficiente" in borrador
-            or "no está cubierto" in borrador.lower()
-        ):
-            if usar_critico:
-                _progreso(4, 4, "¡Finalizado!", saltar_linea=True)
+        if not docs:
+            self._progreso(4, 4, "¡Finalizado!", saltar_linea=True)
+            yield {"answer": "No he encontrado información sobre este tema en el material cargado. Al tratarse de un tutor basado estrictamente en el contenido provisto, no puedo responder esta pregunta."}
             tracker.finish_and_log("REJECTED_SAFE")
             yield {"context_docs": []}
             return
 
-        borrador_limpio = re.sub(
-            r"<think>.*?</think>", "", borrador, flags=re.DOTALL
-        ).strip()
+        yield from self._generar_con_supervisor(consulta, docs, contexto_grafo, intencion_filtro, chat_history, consulta_optimizada, tracker)
 
-        if "REQUIRE_WEB_SEARCH" in borrador_limpio and len(borrador_limpio) < 100:
-            _log.info("Tutor solicitó búsqueda web (REQUIRE_WEB_SEARCH).")
-            decision_critico = "RECHAZADO"
-        elif any(
-            w in borrador_limpio.lower()[:50]
-            for w in ["lo siento", "no puedo", "hubo un error"]
-        ):
-            decision_critico = "RECHAZADO"
-        else:
-            if usar_critico:
-                _progreso(
-                    3,
-                    4,
-                    "Crítico evaluando precisión y alucinaciones...",
-                    saltar_linea=True,
-                )
-                t_crit_start = time.time()
-                decision_critico = evaluar_borrador(
-                    llm_critic or llm, texto_contexto, borrador_limpio
-                )
-                tracker.add_latency(f"Critico_Intento_{intento}", t_crit_start)
-            else:
-                decision_critico = "APROBADO"
+    def _generar_con_supervisor(self, consulta, docs, contexto_grafo, intencion_filtro, chat_history, consulta_optimizada, tracker):
+        cadena_tutor = _crear_cadena_tutor(self.llm, self.busqueda_web_alternativa, intencion_filtro)
+        texto_contexto = _formatear_documentos(docs)
+        tracker.set_meta("num_docs", len(docs))
+        tracker.set_meta("context_size_chars", len(texto_contexto))
+        mensaje_feedback = ""
 
-        es_aprobado = "APROBADO" in decision_critico or "APPROVED" in decision_critico
-        es_rechazado = "RECHAZADO" in decision_critico or "REJECTED" in decision_critico
+        for intento in range(1, 4):
+            tracker.set_meta("attempts", intento)
+            tracker.init_latency(f"Generacion_LLM_Intento_{intento}")
+            if self.usar_critico:
+                tracker.init_latency(f"Critico_Intento_{intento}")
+                self._progreso(2, 4, f"Generando respuesta (Intento {intento}/3)...", saltar_linea=True)
 
-        if es_aprobado and not es_rechazado:
-            if usar_critico:
-                _progreso(4, 4, "¡Respuesta Aprobada!", saltar_linea=True)
-            if cache_store:
-                try:
-                    cache_store.add_texts(
-                        texts=[consulta], metadatas=[{"respuesta": borrador}]
-                    )
-                except Exception as e:
-                    _log.warning(f"Error guardando en caché semántico: {e}")
-            tracker.finish_and_log("APPROVED")
-            
-            if usar_critico:
-                # Solo yeildeamos la respuesta final si el crítico estaba activo 
-                # (si no, ya la fuimos yieldando token por token)
-                yield {"answer": borrador}
-            
-            yield {"context_docs": docs}
-            return
-        else:
-            mensaje_feedback = "El revisor indicó que tu respuesta incluía afirmaciones no respaldadas. Por favor, sé más estricto."
-            yield {
-                "answer": "\n\n[!] El supervisor local detectó imprecisiones. Reintentando corregir la respuesta...\n\n"
+            if intento == 2:
+                if self.busqueda_web_alternativa and self.herramienta_busqueda:
+                    self._progreso(2, 4, "Consultando información adicional en la web...", saltar_linea=True)
+                    try:
+                        t_web_start = time.time()
+                        resultados_web = self.herramienta_busqueda.invoke(consulta_optimizada)
+                        tracker.add_latency("Generacion_BusquedaWeb", t_web_start)
+                        tracker.set_meta("web_search_used", True)
+                        texto_contexto += f"\n\n--- RESULTADOS DE BÚSQUEDA WEB ---\n{resultados_web}"
+                        tracker.set_meta("context_size_chars", len(texto_contexto))
+                    except Exception as e:
+                        _log.warning(f"Falló la búsqueda web: {e}")
+                else:
+                    self._progreso(4, 4, "¡Finalizado!", saltar_linea=True)
+                    yield {"answer": "No poseo información suficiente en los apuntes para responder a tu pregunta sin inventar."}
+                    yield {"context_docs": []}
+                    return
+
+            t_gen_start = time.time()
+            args_invoke = {
+                "chat_history": chat_history,
+                "input": consulta,
+                "context": texto_contexto,
+                "graph_context": contexto_grafo,
+                "feedback": mensaje_feedback,
             }
-            continue
 
-    _progreso(4, 4, "Agotados los intentos.", saltar_linea=True)
-    yield {
-        "answer": "\n\nNo poseo información explícita en los apuntes para responder tu pregunta sin inventar."
-    }
-    tracker.finish_and_log("REJECTED_SAFE")
-    yield {"context_docs": []}
+            if self.usar_critico:
+                respuesta = cadena_tutor.invoke(args_invoke)
+                borrador = respuesta.content if hasattr(respuesta, "content") else str(respuesta)
+            else:
+                self._progreso(3, 4, "Generando respuesta...", saltar_linea=True)
+                borrador = ""
+                for token_chunk in cadena_tutor.stream(args_invoke):
+                    content = token_chunk.content if hasattr(token_chunk, "content") else str(token_chunk)
+                    borrador += content
+                    yield {"answer": content}
 
+            tracker.add_latency(f"Generacion_LLM_Intento_{intento}", t_gen_start)
 
-def procesar_consulta(*args, **kwargs) -> dict:
-    ans = ""
-    docs = []
-    for chunk in _generador_procesar_consulta(*args, **kwargs):
-        if "answer" in chunk:
-            ans += chunk["answer"]
-        if "context_docs" in chunk:
-            docs = chunk["context_docs"]
-    return {"answer": ans, "context_docs": docs}
+            borrador_limpio = re.sub(r"<think>.*?</think>", "", borrador, flags=re.DOTALL).strip()
 
+            if "No poseo información suficiente" in borrador_limpio or "no está cubierto" in borrador_limpio.lower():
+                if self.usar_critico:
+                    self._progreso(4, 4, "¡Finalizado!", saltar_linea=True)
+                    yield {"answer": borrador}
+                tracker.finish_and_log("REJECTED_SAFE")
+                yield {"context_docs": []}
+                return
+
+            if "REQUIRE_WEB_SEARCH" in borrador_limpio and len(borrador_limpio) < 100:
+                _log.info("Tutor solicitó búsqueda web (REQUIRE_WEB_SEARCH).")
+                decision_critico = "RECHAZADO"
+            elif any(w in borrador_limpio.lower()[:50] for w in ["lo siento", "no puedo", "hubo un error"]):
+                decision_critico = "RECHAZADO"
+            else:
+                if self.usar_critico:
+                    self._progreso(3, 4, "Crítico evaluando precisión y alucinaciones...", saltar_linea=True)
+                    t_crit_start = time.time()
+                    decision_critico = evaluar_borrador(self.llm_critic or self.llm, texto_contexto, borrador_limpio)
+                    tracker.add_latency(f"Critico_Intento_{intento}", t_crit_start)
+                else:
+                    decision_critico = "APROBADO"
+
+            es_aprobado = "APROBADO" in decision_critico or "APPROVED" in decision_critico
+            es_rechazado = "RECHAZADO" in decision_critico or "REJECTED" in decision_critico
+
+            if es_aprobado and not es_rechazado:
+                if self.usar_critico:
+                    self._progreso(4, 4, "¡Respuesta Aprobada!", saltar_linea=True)
+                if self.cache_store:
+                    try:
+                        self.cache_store.add_texts(texts=[consulta], metadatas=[{"respuesta": borrador}])
+                    except Exception as e:
+                        _log.warning(f"Error guardando en caché semántico: {e}")
+                tracker.finish_and_log("APPROVED")
+                
+                if self.usar_critico:
+                    yield {"answer": borrador}
+                
+                yield {"context_docs": docs}
+                return
+            else:
+                mensaje_feedback = "El revisor indicó que tu respuesta incluía afirmaciones no respaldadas. Por favor, sé más estricto."
+                yield {"answer": "\n\n[!] El supervisor local detectó imprecisiones. Reintentando corregir la respuesta...\n\n"}
+                continue
+
+        self._progreso(4, 4, "Agotados los intentos.", saltar_linea=True)
+        yield {"answer": "\n\nNo poseo información explícita en los apuntes para responder tu pregunta sin inventar."}
+        tracker.finish_and_log("REJECTED_SAFE")
+        yield {"context_docs": []}
 
 def stream_consulta(
     retriever: BaseRetriever,
@@ -502,16 +454,20 @@ def stream_consulta(
     usar_critico: bool = True,
     llm_critic: BaseChatModel = None,
 ) -> Iterator[dict]:
-    """Generador para devolver la respuesta poco a poco (o el estado)."""
-
-    def _progreso_print(
-        paso: int, total: int = 4, mensaje: str = "", saltar_linea: bool = False
-    ):
+    pipeline = PipelineConsulta(
+        retriever=retriever,
+        llm=llm,
+        busqueda_web_alternativa=busqueda_web_alternativa,
+        cache_store=cache_store,
+        usar_critico=usar_critico,
+        llm_critic=llm_critic,
+    )
+    
+    def _progreso_print(paso: int, total: int = 4, mensaje: str = "", saltar_linea: bool = False):
         porcentaje = int((paso / total) * 100)
         barra = "█" * (porcentaje // 10) + "░" * (10 - (porcentaje // 10))
         texto = f"\r[{barra}] {porcentaje:3}% | {mensaje}" + " " * 30
         
-        # Si es el paso 3 o 4 (después del streaming), bajamos una línea para no sobreescribir los tokens
         if paso >= 3 and not hasattr(_progreso_print, "ya_salto"):
             print("\n")
             _progreso_print.ya_salto = True
@@ -527,38 +483,17 @@ def stream_consulta(
             except UnicodeEncodeError:
                 print(texto.replace("█", "#").replace("░", "-"), end="", flush=True)
 
-    yield from _generador_procesar_consulta(
-        retriever,
-        llm,
-        consulta,
-        chat_history,
-        busqueda_web_alternativa,
-        cache_store,
-        _progreso_print,
-        usar_critico,
-        llm_critic,
-    )
+    yield from pipeline.ejecutar(consulta, chat_history, _progreso_print)
 
+def procesar_consulta(*args, **kwargs) -> dict:
+    ans = ""
+    docs = []
+    for chunk in stream_consulta(*args, **kwargs):
+        if "answer" in chunk:
+            ans += chunk["answer"]
+        if "context_docs" in chunk:
+            docs = chunk["context_docs"]
+    return {"answer": ans, "context_docs": docs}
 
-def ejecutar_consulta(
-    retriever: BaseRetriever,
-    llm: BaseChatModel,
-    consulta: str,
-    chat_history: list = None,
-    busqueda_web_alternativa: bool = False,
-    cache_store: BaseRetriever = None,
-    usar_critico: bool = True,
-    llm_critic: BaseChatModel = None,
-) -> dict:
-    """Ejecución síncrona, devuelve directamente el diccionario."""
-    return procesar_consulta(
-        retriever,
-        llm,
-        consulta,
-        chat_history,
-        busqueda_web_alternativa,
-        cache_store,
-        None,
-        usar_critico,
-        llm_critic,
-    )
+def ejecutar_consulta(*args, **kwargs) -> dict:
+    return procesar_consulta(*args, **kwargs)
