@@ -22,11 +22,14 @@ from local_teacher.query.critic import evaluar_borrador
 # Configurar logging para reducir ruido
 logging.basicConfig(level=logging.WARNING)
 
+OUTPUTS_DIR = os.path.join(os.path.dirname(__file__), "outputs")
+os.makedirs(OUTPUTS_DIR, exist_ok=True)
+
 # Rutas y colecciones aisladas para la prueba
 BENCHMARK_COLLECTION = "benchmark_eval_coleccion"
-BENCHMARK_PARENTS_DIR = "./.benchmark_eval_parents"
-BENCHMARK_KUZU_DIR = "./benchmark_eval_kuzu"
-BENCHMARK_CHECKPOINT_DB = "./benchmark_eval_checkpoint.db"
+BENCHMARK_PARENTS_DIR = os.path.join(OUTPUTS_DIR, ".benchmark_eval_parents")
+BENCHMARK_KUZU_DIR = os.path.join(OUTPUTS_DIR, "benchmark_eval_kuzu")
+BENCHMARK_CHECKPOINT_DB = os.path.join(OUTPUTS_DIR, "benchmark_eval_checkpoint.db")
 
 
 def ejecutar_prueba_completa(reingestar: bool = False):
@@ -48,7 +51,7 @@ def ejecutar_prueba_completa(reingestar: bool = False):
     print("FASE 1: RENDIMIENTO Y VELOCIDAD DE INGESTA")
     print("-" * 80)
 
-    ruta_ingesta = os.path.join(os.path.dirname(__file__), "..", "test_docs", "inacap.jsonl")
+    ruta_ingesta = os.path.join(os.path.dirname(__file__), "..", "test_docs", "parsed", "inacap.jsonl")
     
     if reingestar or not os.path.exists(BENCHMARK_KUZU_DIR):
         print(f"[*] Cargando documentos desde {ruta_ingesta}...")
@@ -197,10 +200,11 @@ def ejecutar_prueba_completa(reingestar: bool = False):
         },
         "consultas": metricas_consultas,
     }
-    with open("benchmark_resultados.json", "w", encoding="utf-8") as f:
+    json_path = os.path.join(OUTPUTS_DIR, "benchmark_resultados.json")
+    with open(json_path, "w", encoding="utf-8") as f:
         json.dump(reporte, f, ensure_ascii=False, indent=2)
 
-    print("\nReporte estructurado guardado en benchmark_resultados.json")
+    print(f"\nReporte estructurado guardado en {json_path}")
     print("Prueba de flujo completada exitosamente.")
 
 

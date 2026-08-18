@@ -8,8 +8,15 @@ _log = logging.getLogger(__name__)
 class StateManager:
     """Gestor de estado persistente con SQLite para reanudar tareas de ingesta."""
 
-    def __init__(self, db_path: Path | str = "./checkpoint.db"):
-        self.db_path = Path(db_path)
+    def __init__(self, db_path: Path | str | None = None):
+        if db_path is None:
+            root_dir = Path(__file__).parent.parent.parent
+            data_dir = root_dir / "data"
+            data_dir.mkdir(exist_ok=True)
+            self.db_path = data_dir / "checkpoint.db"
+        else:
+            self.db_path = Path(db_path)
+            
         self._init_db()
 
     def _obtener_conexion(self) -> sqlite3.Connection:

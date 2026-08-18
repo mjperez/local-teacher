@@ -8,8 +8,11 @@ __pycache__/
 tmp*/
 temp*/
 *.log
+logs/
 .flashrank_cache/
 .agents/
+evals/outputs/
+data/
 
 # Generated DBs and graph files
 .local_teacher_parents/

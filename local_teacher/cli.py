@@ -35,8 +35,13 @@ from local_teacher.storage.redis_cache import get_semantic_cache_store  # noqa: 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+LOGS_DIR = os.path.join(PROJECT_ROOT, "logs")
+os.makedirs(LOGS_DIR, exist_ok=True)
+LOG_FILE = os.path.join(LOGS_DIR, "local_teacher.log")
+
 logging.basicConfig(
-    filename="local_teacher.log",
+    filename=LOG_FILE,
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     force=True,

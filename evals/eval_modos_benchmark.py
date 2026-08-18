@@ -21,8 +21,11 @@ from local_teacher.query.pipeline import PipelineConsulta
 # Configurar logging para reducir ruido
 logging.basicConfig(level=logging.WARNING)
 
+OUTPUTS_DIR = os.path.join(os.path.dirname(__file__), "outputs")
+os.makedirs(OUTPUTS_DIR, exist_ok=True)
+
 BENCHMARK_COLLECTION = "benchmark_eval_coleccion"
-BENCHMARK_KUZU_DIR = "./benchmark_eval_kuzu"
+BENCHMARK_KUZU_DIR = os.path.join(OUTPUTS_DIR, "benchmark_eval_kuzu")
 
 
 def benchmark_modos():
@@ -148,9 +151,10 @@ def benchmark_modos():
     for r in resultados_comparativos:
         print(f"{r['modo']:<12} | {r['pregunta_id']:<16} | {r['latencia_seg']:<12.2f} | {r['docs_count']:<6} | {'OK' if r['aprobado'] else 'FALLO':<10}")
 
-    with open("benchmark_modos_comparativo.json", "w", encoding="utf-8") as f:
+    json_path = os.path.join(OUTPUTS_DIR, "benchmark_modos_comparativo.json")
+    with open(json_path, "w", encoding="utf-8") as f:
         json.dump(resultados_comparativos, f, ensure_ascii=False, indent=2)
-    print("\nResultados completos guardados en benchmark_modos_comparativo.json")
+    print(f"\nResultados completos guardados en {json_path}")
 
 
 if __name__ == "__main__":

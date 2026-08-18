@@ -79,7 +79,8 @@ def main():
     
     print(f"[*] Evaluando respuestas para el dataset de prueba ({args.limit} preguntas)...\n")
     count = 0
-    with open("test_eval_dataset.jsonl", "r", encoding="utf-8") as f:
+    dataset_path = os.path.join(os.path.dirname(__file__), "test_eval_dataset.jsonl")
+    with open(dataset_path, "r", encoding="utf-8") as f:
         for line in f:
             if count >= args.limit:
                 break

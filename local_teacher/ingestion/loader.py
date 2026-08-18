@@ -26,6 +26,18 @@ def _calcular_hash(ruta_archivo: Path) -> str:
         return str(ruta_archivo)
 
 
+def _get_cache_path(ruta_original: Path) -> Path:
+    """Calcula la ruta de la caché separándola de los documentos originales."""
+    if ruta_original.is_dir():
+        cache_dir = ruta_original / "parsed"
+        cache_dir.mkdir(exist_ok=True)
+        return cache_dir / f"{ruta_original.name}.jsonl"
+    else:
+        cache_dir = ruta_original.parent / "parsed"
+        cache_dir.mkdir(exist_ok=True)
+        return cache_dir / f"{ruta_original.stem}.jsonl"
+
+
 def _procesar_un_archivo(args: tuple) -> tuple[Path, list[Document]]:
     """Procesa un archivo individual según su extensión."""
     (
@@ -84,7 +96,7 @@ def cargar_archivos(
     docs: list[Document] = []
     items = [ruta_carpeta] if ruta_carpeta.is_file() else list(ruta_carpeta.rglob("*"))
 
-    cache_path = Path(str(ruta_carpeta)).with_suffix(".jsonl")
+    cache_path = _get_cache_path(ruta_carpeta)
     sm = get_state_manager()
     archivos_procesados = sm.get_processed_files()
 
@@ -145,7 +157,7 @@ def cargar_archivos(
 
 def guardar_cache_jsonl(docs: list[Document], ruta_original: Path | str) -> None:
     """Guarda la lista de documentos en formato JSONL como caché local."""
-    cache_path = Path(ruta_original).with_suffix(".jsonl")
+    cache_path = _get_cache_path(Path(ruta_original))
     if str(ruta_original).endswith(".jsonl") or cache_path.exists():
         return
 

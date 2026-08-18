@@ -14,10 +14,12 @@ checkpoint.db
 local_teacher_kuzu/
 .local_teacher_parents/
 data/
+evals/outputs/
 
 # Ignore logs
 local_teacher.log
 *.log
+logs/
 
 # Ignore docs/pdfs the user is locally querying
 *.pdf

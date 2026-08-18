@@ -1,3 +1,4 @@
+import os
 import json
 import logging
 import time
@@ -9,8 +10,14 @@ from langchain_core.language_models.chat_models import BaseChatModel
 metrics_logger = logging.getLogger("latency_metrics")
 metrics_logger.setLevel(logging.INFO)
 metrics_logger.propagate = False
+
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+LOGS_DIR = os.path.join(PROJECT_ROOT, "logs")
+os.makedirs(LOGS_DIR, exist_ok=True)
+METRICS_FILE = os.path.join(LOGS_DIR, "latency_metrics.jsonl")
+
 if not metrics_logger.handlers:
-    fh = logging.FileHandler("latency_metrics.jsonl", encoding="utf-8")
+    fh = logging.FileHandler(METRICS_FILE, encoding="utf-8")
     fh.setFormatter(logging.Formatter("%(message)s"))
     metrics_logger.addHandler(fh)
 
