@@ -24,11 +24,11 @@ def evaluar_borrador(llm: BaseChatModel, texto_contexto: str, borrador: str) -> 
                 "human",
                 "Contexto Original:\n{context}\n\nRespuesta Generada:\n{draft}\n\n"
                 "INSTRUCCIÓN FINAL:\n"
-                "1. CRÍTICO: Si la respuesta inicia con disculpas (ej. 'Lo siento', 'No puedo') o indica que no tiene información para responder, responde RECHAZADO.\n"
+                "1. CRÍTICO: Si la respuesta indica honestamente que no hay información suficiente en el contexto para responder, responde APROBADO (es correcto admitir ignorancia si el texto no lo cubre).\n"
                 "2. CRÍTICO: Si la respuesta divaga hablando de temas que están en el contexto pero que NO responden directamente a lo que el usuario preguntó, responde RECHAZADO.\n"
-                "3. Si la respuesta inventa información que no está en el contexto, responde RECHAZADO.\n"
+                "3. Si la respuesta inventa o alucina información que no está en el contexto, responde RECHAZADO.\n"
                 "4. Si la respuesta es útil, directa y está sustentada en el contexto, responde APROBADO.\n"
-                "¿Apruebas la respuesta generada dadas las instrucciones anteriores? Responde APROBADO o RECHAZADO y nada más.",
+                "¿Apruebas la respuesta generada dadas las instrucciones anteriores? Responde EXACTAMENTE con la palabra 'APROBADO' o 'RECHAZADO' y NADA MÁS. No incluyas puntuación ni explicaciones.",
             ),
         ]
     )
@@ -42,4 +42,11 @@ def evaluar_borrador(llm: BaseChatModel, texto_contexto: str, borrador: str) -> 
     
     # Limpiar <think> si es un modelo tipo DeepSeek
     contenido = re.sub(r"<think>.*?</think>", "", contenido, flags=re.DOTALL).strip()
-    return contenido
+    
+    # Asegurar que el formato sea exacto, sino, ser tolerantes para evitar bucles
+    if "APROBADO" in contenido.upper():
+        return "APROBADO"
+    elif "RECHAZADO" in contenido.upper():
+        return "RECHAZADO"
+    
+    return "APROBADO"

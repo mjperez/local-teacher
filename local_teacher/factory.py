@@ -26,7 +26,7 @@ def obtener_modelos(
             
         print(f"[*] Conectando a Ollama en: {host}")
         return (
-            ChatOllama(model=ollama_llm, temperature=0, base_url=host, num_ctx=4096, keep_alive=300),
+            ChatOllama(model=ollama_llm, temperature=0, base_url=host, num_ctx=16384, keep_alive=300),
             OllamaEmbeddings(model=ollama_embed, base_url=host, keep_alive=0),
         )
         
