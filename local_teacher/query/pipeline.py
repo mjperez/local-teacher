@@ -12,7 +12,7 @@ from local_teacher.query.optimizer import reescribir_consulta
 from local_teacher.query.critic import evaluar_borrador, DecisionCritico
 from local_teacher.query.graph_search import obtener_contexto_grafo
 from local_teacher.query.reranker import recuperar_y_filtrar
-from local_teacher.query.prompts import formatear_documentos, crear_cadena_tutor
+from local_teacher.query.prompts import formatear_documentos, crear_cadena_tutor, MENSAJE_FALLBACK
 
 _log = logging.getLogger(__name__)
 
@@ -127,7 +127,7 @@ class PipelineConsulta:
         if not docs:
             self._progreso(4, 4, "¡Finalizado!", saltar_linea=True)
             yield {
-                "answer": "No he encontrado información sobre este tema en el material cargado. Al tratarse de un tutor basado estrictamente en el contenido provisto, no puedo responder esta pregunta."
+                "answer": MENSAJE_FALLBACK
             }
             tracker.finish_and_log("REJECTED_SAFE")
             yield {"context_docs": []}
@@ -189,10 +189,12 @@ class PipelineConsulta:
                     )
                     tracker.add_latency("Generacion_BusquedaWeb", t_web_start)
                     tracker.set_meta("web_search_used", True)
-                    texto_contexto += f"\n\n--- RESULTADOS DE BÚSQUEDA WEB ---\n{resultados_web}"
+                    resultados_web_recortados = str(resultados_web)[:2000]
+                    texto_contexto += f"\n\n--- RESULTADOS DE BÚSQUEDA WEB ---\n{resultados_web_recortados}"
                     tracker.set_meta("context_size_chars", len(texto_contexto))
                 except Exception as e:
                     _log.warning("Falló la búsqueda web: %s", e)
+                    mensaje_feedback += "\n[!] La búsqueda web automática falló. Responde basándote solo en el contexto previo o admite que no posees información."
 
             t_gen_start = time.time()
             args_invoke = {
@@ -279,7 +281,9 @@ class PipelineConsulta:
                 tracker.finish_and_log("APPROVED")
 
                 if self.usar_critico:
-                    yield {"answer": borrador}
+                    for i in range(0, len(borrador), 15):
+                        yield {"answer": borrador[i:i+15]}
+                        time.sleep(0.01)
 
                 yield {"context_docs": docs}
                 return
@@ -292,7 +296,7 @@ class PipelineConsulta:
 
         self._progreso(4, 4, "Agotados los intentos.", saltar_linea=True)
         yield {
-            "answer": "\n\nNo poseo información explícita en los apuntes para responder tu pregunta sin inventar."
+            "answer": f"\n\n{MENSAJE_FALLBACK}"
         }
         tracker.finish_and_log("REJECTED_SAFE")
         yield {"context_docs": []}

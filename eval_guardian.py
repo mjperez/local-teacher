@@ -1,3 +1,4 @@
+import argparse
 import json
 import logging
 from langchain_core.prompts import ChatPromptTemplate
@@ -58,6 +59,10 @@ Is the assistant message a hallucination based on the context? Respond with only
     return {"raw": result.strip(), "label": label}
 
 def main():
+    parser = argparse.ArgumentParser(description="Evaluar modelo supervisor")
+    parser.add_argument("--limit", type=int, default=3, help="Límite de preguntas a evaluar")
+    args = parser.parse_args()
+
     print("[*] Iniciando Evaluación de Groundedness con Granite Guardian...")
     llm, emb = obtener_modelos("ollama")
     retriever = get_qdrant_retriever(emb)
@@ -66,11 +71,12 @@ def main():
     
     results_summary = {"Grounded": 0, "Hallucination": 0, "Correct Refusal": 0, "Unknown": 0}
     
-    print("[*] Evaluando respuestas para el dataset de prueba (3 preguntas)...\n")
+    print(f"[*] Evaluando respuestas para el dataset de prueba ({args.limit} preguntas)...\n")
     count = 0
     with open("test_eval_dataset.jsonl", "r", encoding="utf-8") as f:
         for line in f:
-            if count >= 3: break
+            if count >= args.limit:
+                break
             item = json.loads(line)
             q = item["question"]
             
@@ -88,19 +94,19 @@ def main():
                 if context_str:
                     print(f"  {context_str[:200]}...")
                 
-                print(f"\n  [Respuesta]")
+                print("\n  [Respuesta]")
                 print(f"  {ans[:200]}...")
                 
                 # Check if this is a correct refusal first
                 if is_correct_refusal(ans):
                     results_summary["Correct Refusal"] += 1
-                    print(f"\n  -> Resultado: ✅ Correct Refusal (el tutor admitió que no tiene la info)")
+                    print("\n  -> Resultado: ✅ Correct Refusal (el tutor admitió que no tiene la info)")
                 elif not context_str.strip():
                     # No context but tutor answered anyway = hallucination
                     results_summary["Hallucination"] += 1
-                    print(f"\n  -> Resultado: ❌ Hallucination (respondió sin contexto disponible)")
+                    print("\n  -> Resultado: ❌ Hallucination (respondió sin contexto disponible)")
                 else:
-                    print(f"\n  -> Evaluando fidelidad con Guardian...")
+                    print("\n  -> Evaluando fidelidad con Guardian...")
                     eval_result = evaluate_groundedness(guardian_llm, context_str, ans)
                     
                     label = eval_result["label"]

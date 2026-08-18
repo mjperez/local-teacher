@@ -3,6 +3,7 @@ from langchain_core.documents import Document
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
+MENSAJE_FALLBACK = "No he encontrado información sobre este tema en el material cargado. Al tratarse de un tutor basado estrictamente en el contenido provisto, no puedo responder esta pregunta sin inventar."
 
 def formatear_documentos(docs: list[Document]) -> str:
     """Formatea la lista de documentos recuperados inyectando sus metadatos para el modelo."""

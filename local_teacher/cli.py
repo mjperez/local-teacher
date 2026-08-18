@@ -16,16 +16,7 @@ from local_teacher.query.retriever import stream_consulta
 from local_teacher.storage.qdrant_store import get_qdrant_retriever
 from local_teacher.storage.redis_cache import get_semantic_cache_store
 
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
-os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
-os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 
-warnings.filterwarnings("ignore", message=".*torch_dtype.*")
-warnings.filterwarnings("ignore", message=".*loading weights.*")
-warnings.filterwarnings("ignore", module="gliner.*")
-warnings.filterwarnings("ignore", module="huggingface_hub.*")
-warnings.filterwarnings("ignore", category=UserWarning)
 
 # Permite ejecutar con "python local_teacher/cli.py" directamente
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -217,6 +208,17 @@ class LocalTeacherApp:
 
 def main() -> None:
     """Flujo mínimo de RAG: ingestar, indexar y responder."""
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+    os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+    os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
+    os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+
+    warnings.filterwarnings("ignore", message=".*torch_dtype.*")
+    warnings.filterwarnings("ignore", message=".*loading weights.*")
+    warnings.filterwarnings("ignore", module="gliner.*")
+    warnings.filterwarnings("ignore", module="huggingface_hub.*")
+    warnings.filterwarnings("ignore", category=UserWarning)
+
     load_dotenv()
 
     parser = argparse.ArgumentParser(description="CLI simple de local-teacher")

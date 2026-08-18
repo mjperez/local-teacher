@@ -24,8 +24,11 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Copiamos el resto del proyecto
-COPY . .
+# Copiamos el resto del proyecto de forma explícita
+COPY local_teacher/ local_teacher/
+COPY teacher.sh .
+COPY teacher.bat .
+COPY eval_*.py ./
 
 # Comando por defecto (se puede sobreescribir al hacer docker run)
 ENTRYPOINT ["python", "-m", "local_teacher.cli"]
