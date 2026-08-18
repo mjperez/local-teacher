@@ -1,26 +1,35 @@
-.vscode
-.venv*
-__pycache__
+.vscode/
+.venv*/
+__pycache__/
 .env
-test_docs/
-.pytest*
-tmp*
+.pytest_cache/
+
+# Temporary and Cache files
+tmp*/
+temp*/
 *.log
-*.jsonl
-*.graphml
-docs/
-.prettierrc
+.flashrank_cache/
+.agents/
+
+# Generated DBs and graph files
 .local_teacher_parents/
 local_teacher_kuzu/
 local_teacher_kuzu.wal
 .*_checkpoint.json
-local_teacher_kuzu
-.flashrank_cache
-temp*
 local_teacher_qdrant/
 checkpoint.db*
 *.db
 *.db-wal
 *.db-shm
+*.graphml
+
+# Benchmark and testing outputs
 benchmark_*
 .benchmark_*
+
+# Ignore all .jsonl files (Docling cache) except the evaluation dataset
+*.jsonl
+!evals/test_eval_dataset.jsonl
+
+# Ignore large test docs
+test_docs/

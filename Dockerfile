@@ -28,7 +28,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 COPY local_teacher/ local_teacher/
 COPY teacher.sh .
 COPY teacher.bat .
-COPY eval_*.py ./
+COPY evals/ evals/
 
 # Comando por defecto (se puede sobreescribir al hacer docker run)
 ENTRYPOINT ["python", "-m", "local_teacher.cli"]

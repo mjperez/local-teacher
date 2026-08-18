@@ -10,10 +10,11 @@ El sistema procesa material didáctico estructurado, indexa su contenido en base
 
 - **Procesamiento de Documentos con Docling**: Extracción de texto, tablas en Markdown/CSV y figuras con leyendas desde archivos PDF, DOCX, PPTX, Markdown y JSONL. Normalización de fórmulas matemáticas en dos pasadas.
 - **Búsqueda Híbrida y Reranking**: Combinación de búsqueda vectorial densa con vectores dispersos BM25 en Qdrant, refinada mediante un reranker local con **FlashRank** (`ms-marco-MiniLM-L-12-v2`).
-- **Control de Fidelidad y Abstención**: Clasificador binario Self-RAG para evitar alucinaciones y umbral de score mínimo para indicar explícitamente cuándo el tema consultado no está en el material.
-- **Grafo de Conocimiento (GraphRAG)**: Extracción de tripletas entidad-relación y enriquecimiento de contexto mediante grafos conceptuales.
-- **Modo Tutor Interactivo**: CLI multi-turno con memoria conversacional para responder dudas de seguimiento y presentación detallada de fuentes citadas.
-- **Optimización de Hardware**: Descarga automática de modelos de embeddings de la memoria tras vectorizar (`keep_alive=0`) y soporte de caché semántico en Redis.
+- **Control de Fidelidad y Abstención Segura**: Clasificador binario Self-RAG para evitar alucinaciones. Incorpora un umbral de score mínimo y mensajes de _fallback_ estandarizados para indicar explícitamente cuándo el tema consultado no está en el material.
+- **Grafo de Conocimiento (GraphRAG)**: Extracción de tripletas entidad-relación y enriquecimiento de contexto mediante grafos conceptuales impulsados por KuzuDB.
+- **Streaming de Respuestas**: Salida en consola progresiva (chunking artificial) para una experiencia de usuario natural y fluida mientras el LLM elabora respuestas extensas.
+- **Búsqueda Web Condicionada**: Si la información local no es suficiente, puede desencadenar consultas web a través de DuckDuckGo de manera segura (limitada a 2000 caracteres) para expandir su conocimiento.
+- **Optimización de Hardware**: Descarga automática de modelos de embeddings de la memoria tras vectorizar (`keep_alive=0`), puertos flexibles en Docker y soporte de caché semántico en Redis.
 
 ---
 
@@ -41,7 +42,7 @@ El sistema procesa material didáctico estructurado, indexa su contenido en base
    ```bash
    docker compose up -d
    ```
-   El contenedor `ollama-init` descargará de forma automática los modelos `deepseek-r1:8b` y `nomic-embed-text`.
+   El contenedor `ollama-init` descargará de forma automática los modelos de embeddings y generación especificados en la configuración.
 
 ---
 
@@ -79,16 +80,24 @@ El comando abrirá un diálogo interactivo donde puedes escribir preguntas de se
 - `--provider <nombre>`: Proveedor LLM (`ollama`, `openai`).
 - `--ollama-llm <modelo>`: Nombre del modelo de generación (por defecto `deepseek-r1:8b` o `llama3.2`).
 - `--ollama-embed <modelo>`: Modelo de embeddings (por defecto `nomic-embed-text`).
-- `--ollama-host <url>`: URL del servidor Ollama (por defecto `http://127.0.0.1:11434`).
+- `--ollama-host <url>`: URL del servidor Ollama (por defecto definido en el entorno).
 
 ---
 
-## Pruebas Automatizadas
+## Pruebas Automatizadas y Benchmarks
 
+### Tests Unitarios
 Ejecuta la suite de pruebas unitarias e integración con `pytest`:
 
 ```bash
 pytest tests/
+```
+
+### Evaluaciones de Fidelidad (Groundedness)
+Los scripts para probar las métricas de respuesta del modelo se encuentran en la carpeta `evals/`.
+Por ejemplo, para evaluar al supervisor interno:
+```bash
+python evals/eval_guardian.py --limit 3
 ```
 
 ---
@@ -99,13 +108,13 @@ pytest tests/
 local-teacher/
 ├── local_teacher/
 │   ├── ingestion/       # Loader (Docling), Chunker y Graph Builder
-│   ├── query/           # Retriever, Optimizer, Critic y Tutor
+│   ├── query/           # Retriever, Optimizer, Critic y Tutor (Pipeline principal)
 │   ├── storage/         # Qdrant Store y Redis Cache
-│   ├── evaluation/      # Generación sintética y evaluación RAG
 │   ├── factory.py       # Configuración de LLM y Embeddings
 │   ├── metadata.py      # Definición de tipos de metadatos
 │   └── cli.py           # Interfaz de línea de comandos interactiva
 ├── docs/                # Documentación técnica y guías
+├── evals/               # Scripts de benchmarking y evaluación de fidelidad
 ├── tests/               # Suite de tests con pytest
 ├── docker-compose.yml   # Orquestación de Qdrant, Redis y Ollama
 ├── requirements.txt     # Dependencias de Python

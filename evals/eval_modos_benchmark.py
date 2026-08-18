@@ -1,9 +1,13 @@
 import os
+import sys
 import shutil
 import time
 import json
 import logging
 from pathlib import Path
+
+# Permitir importaciones relativas desde la carpeta raíz o la carpeta evals
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from local_teacher.factory import obtener_modelos, obtener_llm_critico
 from local_teacher.ingestion.state_manager import StateManager

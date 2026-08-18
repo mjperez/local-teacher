@@ -24,3 +24,4 @@ local_teacher.log
 *.mp4
 *.md
 *.jsonl
+!evals/test_eval_dataset.jsonl

@@ -1,9 +1,13 @@
 import os
+import sys
 import shutil
 import time
 import json
 import logging
 from pathlib import Path
+
+# Permitir importaciones relativas desde la carpeta raíz o la carpeta evals
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from local_teacher.factory import obtener_modelos, obtener_llm_critico
 from local_teacher.ingestion.state_manager import StateManager
@@ -44,7 +48,7 @@ def ejecutar_prueba_completa(reingestar: bool = False):
     print("FASE 1: RENDIMIENTO Y VELOCIDAD DE INGESTA")
     print("-" * 80)
 
-    ruta_ingesta = "test_docs/inacap.jsonl"
+    ruta_ingesta = os.path.join(os.path.dirname(__file__), "..", "test_docs", "inacap.jsonl")
     
     if reingestar or not os.path.exists(BENCHMARK_KUZU_DIR):
         print(f"[*] Cargando documentos desde {ruta_ingesta}...")
@@ -151,7 +155,7 @@ def ejecutar_prueba_completa(reingestar: bool = False):
         try:
             print(f"     Respuesta: {preview}...")
         except Exception:
-            print(f"     Respuesta: (codificada en utf-8)")
+            print("     Respuesta: (codificada en utf-8)")
 
         # Evaluación de eficacia
         if caso["espera_respuesta"]:
