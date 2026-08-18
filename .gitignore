@@ -17,3 +17,4 @@ local_teacher_kuzu.wal
 local_teacher_kuzu
 .flashrank_cache
 temp*
+local_teacher_qdrant/
