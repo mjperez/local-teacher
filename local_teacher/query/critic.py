@@ -1,14 +1,23 @@
 import re
+from enum import Enum
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.language_models.chat_models import BaseChatModel
 
+
+class DecisionCritico(str, Enum):
+    """Decisión binaria emitida por el evaluador de fidelidad."""
+    APROBADO = "APROBADO"
+    RECHAZADO = "RECHAZADO"
+
+
 def evaluar_borrador(llm: BaseChatModel, texto_contexto: str, borrador: str) -> str:
-    """5. Agente Crítico (Self-RAG Evaluator)"""
+    """Evalúa si una respuesta generada está respaldada fielmente por el contexto provisto."""
     prompt_critico = ChatPromptTemplate.from_messages(
         [
             (
                 "system",
-                "Eres un clasificador binario. Tu única salida válida es APROBADO o RECHAZADO, sin ensayos ni explicaciones.",
+                "Eres un evaluador de fidelidad y precisión. Tu tarea es clasificar de forma binaria si la respuesta está sustentada en el contexto recuperado.\n"
+                "Salida permitida: únicamente la palabra APROBADO o RECHAZADO.",
             ),
             (
                 "human",
@@ -23,12 +32,11 @@ def evaluar_borrador(llm: BaseChatModel, texto_contexto: str, borrador: str) -> 
             (
                 "human",
                 "Contexto Original:\n{context}\n\nRespuesta Generada:\n{draft}\n\n"
-                "INSTRUCCIÓN FINAL:\n"
-                "1. CRÍTICO: Si la respuesta inicia con disculpas (ej. 'Lo siento', 'No puedo') o indica que no tiene información para responder, responde RECHAZADO.\n"
-                "2. CRÍTICO: Si la respuesta divaga hablando de temas que están en el contexto pero que NO responden directamente a lo que el usuario preguntó, responde RECHAZADO.\n"
-                "3. Si la respuesta inventa información que no está en el contexto, responde RECHAZADO.\n"
-                "4. Si la respuesta es útil, directa y está sustentada en el contexto, responde APROBADO.\n"
-                "¿Apruebas la respuesta generada dadas las instrucciones anteriores? Responde APROBADO o RECHAZADO y nada más.",
+                "Reglas de evaluación:\n"
+                "1. Si la respuesta admite honestamente que el material no contiene la información, responde APROBADO.\n"
+                "2. Si la respuesta introduce hechos o detalles que no aparecen en el contexto, responde RECHAZADO.\n"
+                "3. Si la respuesta responde de forma coherente usando exclusivamente el contexto, responde APROBADO.\n"
+                "¿Apruebas la respuesta? Responde exactamente APROBADO o RECHAZADO.",
             ),
         ]
     )
@@ -39,7 +47,13 @@ def evaluar_borrador(llm: BaseChatModel, texto_contexto: str, borrador: str) -> 
     contenido = (
         resultado.content if hasattr(resultado, "content") else str(resultado)
     ).strip()
-    
-    # Limpiar <think> si es un modelo tipo DeepSeek
-    contenido = re.sub(r"<think>.*?</think>", "", contenido, flags=re.DOTALL).strip()
-    return contenido
+
+    # Limpiar posibles bloques <think> de modelos de razonamiento
+    contenido = re.sub(r"<think>.*?</think>", "", contenido, flags=re.DOTALL).strip().upper()
+
+    if "RECHAZADO" in contenido or "REJECTED" in contenido:
+        return DecisionCritico.RECHAZADO.value
+    if "APROBADO" in contenido or "APPROVED" in contenido:
+        return DecisionCritico.APROBADO.value
+
+    return DecisionCritico.APROBADO.value

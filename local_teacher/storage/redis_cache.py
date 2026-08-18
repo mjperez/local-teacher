@@ -1,67 +1,65 @@
 import os
-import hashlib
 import logging
 from typing import List, Tuple, Any
 
-import redis
+from langchain_core.documents import Document
+from langchain_core.embeddings import Embeddings
 
 _log = logging.getLogger(__name__)
 
-class DummyDoc:
-    def __init__(self, page_content: str, metadata: dict):
-        self.page_content = page_content
-        self.metadata = metadata
-
 class RedisCacheStore:
     """
-    Implementación simple de Caché L1 (Exact Match) usando Redis estándar.
+    Caché Semántico usando Redis Stack (RediSearch) y langchain_community.vectorstores.Redis.
     """
-    def __init__(self, host: str = "localhost", port: int = 6379):
+    def __init__(self, embeddings: Embeddings, host: str = "localhost", port: int = 6379):
+        self.redis_url = f"redis://{host}:{port}"
+        self.embeddings = embeddings
+        self.index_name = "local_teacher_cache"
         try:
-            self.client = redis.Redis(host=host, port=port, decode_responses=True)
-            # Ping para verificar conexión rápida
-            self.client.ping()
-            _log.info("[+] Conectado exitosamente a Redis Cache.")
+            import redis
+            r = redis.Redis.from_url(self.redis_url)
+            r.ping()
+            from langchain_community.vectorstores import Redis
+            self.vectorstore = Redis(
+                redis_url=self.redis_url,
+                index_name=self.index_name,
+                embedding=self.embeddings,
+            )
+            self.connected = True
+            _log.info("[+] Conectado exitosamente a Redis Stack para Semantic Cache.")
         except Exception as e:
-            _log.error(f"[-] No se pudo conectar a Redis: {e}")
-            self.client = None
+            _log.error(f"[-] No se pudo conectar a Redis Stack (¿Tienes Redis Stack en ejecución?): {e}")
+            self.connected = False
 
-    def _hash_query(self, query: str) -> str:
-        # Normalizamos un poco para aumentar aciertos (sin tildes, minúsculas, sin espacios extra)
-        # Nota: Idealmente para Caché Semántico real en Redis se requiere el módulo RediSearch y redis/redis-stack
-        import unicodedata
-        q_norm = unicodedata.normalize('NFKD', query).encode('ASCII', 'ignore').decode('utf-8')
-        q_norm = q_norm.lower().strip()
-        return f"cache:{hashlib.md5(q_norm.encode('utf-8')).hexdigest()}"
-
-    def similarity_search_with_score(self, query: str, k: int = 1) -> List[Tuple[Any, float]]:
-        if not self.client:
+    def similarity_search_with_score(self, query: str, k: int = 1) -> List[Tuple[Document, float]]:
+        if not self.connected:
             return []
-            
-        key = self._hash_query(query)
-        respuesta = self.client.get(key)
-        
-        if respuesta:
-            # Simulamos el formato de Qdrant (Documento, Score)
-            # Retornamos un score de 1.0 (Acierto perfecto)
-            doc = DummyDoc(page_content=respuesta, metadata={"respuesta": respuesta})
-            return [(doc, 1.0)]
-            
-        return []
+        try:
+            # En Langchain Redis, un score más bajo significa más cercanía (distancia Euclideana/Coseno)
+            # Adaptaremos el score de similitud restándolo de 1 para ser congruente si es distancia
+            # Depende de la métrica por defecto, usualmente es L2 o Cosine distance (0 es idéntico).
+            # Para simular "Acierto" que espera el retriever (score > 0.95), invertimos.
+            resultados = self.vectorstore.similarity_search_with_score(query, k=k)
+            procesados = []
+            for doc, distance in resultados:
+                # distance de 0 = 1.0 (exact match)
+                score_similitud = max(0.0, 1.0 - distance)
+                procesados.append((doc, score_similitud))
+            return procesados
+        except Exception as e:
+            _log.warning(f"Error consultando la caché semántica: {e}")
+            return []
 
     def add_texts(self, texts: List[str], metadatas: List[dict]) -> None:
-        if not self.client:
+        if not self.connected:
             return
-            
-        for i, text in enumerate(texts):
-            key = self._hash_query(text)
-            respuesta = metadatas[i].get("respuesta", "")
-            # Guardamos la respuesta con un TTL de 7 días (604800 segundos)
-            if respuesta:
-                self.client.setex(key, 604800, respuesta)
+        try:
+            self.vectorstore.add_texts(texts=texts, metadatas=metadatas)
+        except Exception as e:
+            _log.warning(f"Error guardando en caché semántica: {e}")
 
-def get_semantic_cache_store() -> RedisCacheStore:
+def get_semantic_cache_store(embeddings: Embeddings) -> RedisCacheStore:
     """Inicializa la conexión a Redis Cache."""
     host = os.getenv("REDIS_HOST", "localhost")
     port = int(os.getenv("REDIS_PORT", "6379"))
-    return RedisCacheStore(host=host, port=port)
+    return RedisCacheStore(embeddings=embeddings, host=host, port=port)
