@@ -6,8 +6,11 @@ from local_teacher.query.pipeline import PipelineConsulta
 from local_teacher.query.optimizer import reescribir_consulta, ConsultaEstructurada
 from local_teacher.query.prompts import crear_cadena_tutor, formatear_documentos
 
+import os
+
 BENCHMARK_COLLECTION = "benchmark_eval_coleccion"
-BENCHMARK_KUZU_DIR = "./benchmark_eval_kuzu"
+OUTPUTS_DIR = os.path.join(os.path.dirname(__file__), "outputs")
+BENCHMARK_KUZU_DIR = os.path.join(OUTPUTS_DIR, "benchmark_eval_kuzu")
 
 def test_diagnostico():
     print("=" * 80)
@@ -15,10 +18,11 @@ def test_diagnostico():
     print("=" * 80)
 
     # 1. Modelos con keep_alive=300 (segundos) y num_ctx equilibrado
-    llm_fast = ChatOllama(model="llama3.2", temperature=0, base_url="http://127.0.0.1:11434", num_ctx=4096, keep_alive=300)
-    llm_deepseek = ChatOllama(model="deepseek-r1:8b", temperature=0, base_url="http://127.0.0.1:11434", num_ctx=4096, keep_alive=300)
-    embeddings = OllamaEmbeddings(model="granite-embedding:278m", base_url="http://127.0.0.1:11434", keep_alive=300)
-    llm_critic = ChatOllama(model="granite3-guardian:2b", temperature=0, base_url="http://127.0.0.1:11434", num_ctx=4096, keep_alive=300)
+    ollama_base_url = os.environ.get("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+    llm_fast = ChatOllama(model="llama3.2", temperature=0, base_url=ollama_base_url, num_ctx=4096, keep_alive=300)
+    llm_deepseek = ChatOllama(model="deepseek-r1:8b", temperature=0, base_url=ollama_base_url, num_ctx=4096, keep_alive=300)
+    embeddings = OllamaEmbeddings(model="granite-embedding:278m", base_url=ollama_base_url, keep_alive=300)
+    llm_critic = ChatOllama(model="granite3-guardian:2b", temperature=0, base_url=ollama_base_url, num_ctx=4096, keep_alive=300)
 
     consulta_prueba = "¿que onda con el estandar ISO 12207 en el ciclo de vida del software?"
 
