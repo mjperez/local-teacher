@@ -296,7 +296,7 @@ class PipelineConsulta:
 
         self._progreso(4, 4, "Agotados los intentos.", saltar_linea=True)
         yield {
-            "answer": f"\n\n{MENSAJE_FALLBACK}"
+            "answer": MENSAJE_FALLBACK
         }
         tracker.finish_and_log("REJECTED_SAFE")
         yield {"context_docs": []}

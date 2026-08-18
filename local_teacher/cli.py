@@ -1,20 +1,33 @@
-import argparse
-import logging
 import os
 import sys
 import warnings
-from pathlib import Path
 
-from dotenv import load_dotenv
-from langchain_core.messages import AIMessage, HumanMessage
+if __name__ == "__main__":
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+    os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+    os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
+    os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 
-from local_teacher.factory import obtener_llm_critico, obtener_modelos
-from local_teacher.ingestion.chunker import dividir_texto
-from local_teacher.ingestion.graph_builder import build_knowledge_graph
-from local_teacher.ingestion.loader import cargar_archivos, guardar_cache_jsonl
-from local_teacher.query.retriever import stream_consulta
-from local_teacher.storage.qdrant_store import get_qdrant_retriever
-from local_teacher.storage.redis_cache import get_semantic_cache_store
+    warnings.filterwarnings("ignore", message=".*torch_dtype.*")
+    warnings.filterwarnings("ignore", message=".*loading weights.*")
+    warnings.filterwarnings("ignore", module="gliner.*")
+    warnings.filterwarnings("ignore", module="huggingface_hub.*")
+    warnings.filterwarnings("ignore", category=UserWarning)
+
+import argparse  # noqa: E402
+import logging  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+from dotenv import load_dotenv  # noqa: E402
+from langchain_core.messages import AIMessage, HumanMessage  # noqa: E402
+
+from local_teacher.factory import obtener_llm_critico, obtener_modelos  # noqa: E402
+from local_teacher.ingestion.chunker import dividir_texto  # noqa: E402
+from local_teacher.ingestion.graph_builder import build_knowledge_graph  # noqa: E402
+from local_teacher.ingestion.loader import cargar_archivos, guardar_cache_jsonl  # noqa: E402
+from local_teacher.query.retriever import stream_consulta  # noqa: E402
+from local_teacher.storage.qdrant_store import get_qdrant_retriever  # noqa: E402
+from local_teacher.storage.redis_cache import get_semantic_cache_store  # noqa: E402
 
 
 
@@ -208,16 +221,7 @@ class LocalTeacherApp:
 
 def main() -> None:
     """Flujo mínimo de RAG: ingestar, indexar y responder."""
-    os.environ["TOKENIZERS_PARALLELISM"] = "false"
-    os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
-    os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
-    os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
-
-    warnings.filterwarnings("ignore", message=".*torch_dtype.*")
-    warnings.filterwarnings("ignore", message=".*loading weights.*")
-    warnings.filterwarnings("ignore", module="gliner.*")
-    warnings.filterwarnings("ignore", module="huggingface_hub.*")
-    warnings.filterwarnings("ignore", category=UserWarning)
+    # Env vars were set at the top if run as __main__
 
     load_dotenv()
 
