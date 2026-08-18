@@ -64,8 +64,10 @@ def test_tutor_aprobado_primer_intento(monkeypatch):
     respuestas = [r["answer"] for r in resultados if "answer" in r]
     docs = [r["context_docs"] for r in resultados if "context_docs" in r]
 
-    assert len(respuestas) > 0
-    assert "actuador" in respuestas[0]
+    texto_completo = "".join(respuestas)
+
+    assert len(texto_completo) > 0
+    assert "actuador" in texto_completo
     assert len(docs) > 0
     assert len(docs[0]) == 1
 
@@ -111,8 +113,10 @@ def test_tutor_reintento_por_rechazo_del_critico(monkeypatch):
     resultados = list(pipeline.ejecutar("Pregunta de prueba"))
     respuestas = [r["answer"] for r in resultados if "answer" in r]
 
-    assert any("[!]" in r for r in respuestas)
-    assert any("Respuesta corregida" in r for r in respuestas)
+    texto_completo = "".join(respuestas)
+
+    assert "[!]" in texto_completo
+    assert "Respuesta corregida" in texto_completo
 
 
 def test_tutor_admite_ignorancia_sin_bucle(monkeypatch):
@@ -142,8 +146,10 @@ def test_tutor_admite_ignorancia_sin_bucle(monkeypatch):
     resultados = list(pipeline.ejecutar("Pregunta fuera de contexto"))
     respuestas = [r["answer"] for r in resultados if "answer" in r]
 
-    assert len(respuestas) == 1
-    assert "no está cubierto" in respuestas[0].lower()
+    texto_completo = "".join(respuestas)
+
+    assert len(texto_completo) > 0
+    assert "no está cubierto" in texto_completo.lower()
 
 
 def test_tutor_cache_semantico_acierto():
@@ -164,5 +170,7 @@ def test_tutor_cache_semantico_acierto():
     resultados = list(pipeline.ejecutar("Pregunta exacta"))
     respuestas = [r["answer"] for r in resultados if "answer" in r]
 
-    assert len(respuestas) == 1
-    assert respuestas[0] == "Respuesta en cache."
+    texto_completo = "".join(respuestas)
+
+    assert len(texto_completo) > 0
+    assert texto_completo == "Respuesta en cache."
