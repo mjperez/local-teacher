@@ -19,7 +19,7 @@ services:
     image: ollama/ollama:latest
     container_name: local_teacher_ollama
     ports:
-      - '11434:11434'
+      - '11435:11434'
     volumes:
       - ollama_storage:/root/.ollama
     restart: unless-stopped
@@ -28,17 +28,16 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    # Para usar la GPU en Linux/WSL, descomenta el bloque deploy siguiente.
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all
-    #           capabilities: [gpu]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   redis:
-    image: redis:alpine
+    image: redis/redis-stack-server:latest
     container_name: local_teacher_redis
     ports:
       - '6379:6379'
@@ -64,6 +63,10 @@ services:
       curl -s -X POST http://ollama:11434/api/pull -d '{\"name\": \"deepseek-r1:8b\"}' && \
       echo '\nDescargando llama3.2...' && \
       curl -s -X POST http://ollama:11434/api/pull -d '{\"name\": \"llama3.2\"}' && \
+      echo '\nDescargando granite-embedding:278m...' && \
+      curl -s -X POST http://ollama:11434/api/pull -d '{\"name\": \"granite-embedding:278m\"}' && \
+      echo '\nDescargando granite3-guardian:2b...' && \
+      curl -s -X POST http://ollama:11434/api/pull -d '{\"name\": \"granite3-guardian:2b\"}' && \
       echo '\n¡Modelos descargados exitosamente!' "
 
 volumes:

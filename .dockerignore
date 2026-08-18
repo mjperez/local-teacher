@@ -1,0 +1,26 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.venv/
+venv/
+ENV/
+env/
+.idea/
+.vscode/
+
+# Ignore local checkpoints and data
+checkpoint.db
+local_teacher_kuzu/
+.local_teacher_parents/
+data/
+
+# Ignore logs
+local_teacher.log
+*.log
+
+# Ignore docs/pdfs the user is locally querying
+*.pdf
+*.mp4
+*.md
+*.jsonl

@@ -10,3 +10,17 @@ tmp*
 *.graphml
 docs/
 .prettierrc
+.local_teacher_parents/
+local_teacher_kuzu/
+local_teacher_kuzu.wal
+.*_checkpoint.json
+local_teacher_kuzu
+.flashrank_cache
+temp*
+local_teacher_qdrant/
+checkpoint.db*
+*.db
+*.db-wal
+*.db-shm
+benchmark_*
+.benchmark_*
