@@ -6,6 +6,7 @@ import shutil
 import re
 import argparse
 import logging
+from typing import Protocol, List, Tuple
 from pathlib import Path
 
 if __name__ == "__main__":
@@ -143,8 +144,10 @@ class LocalTeacherApp:
 
             if self.args.graph:
                 kuzu_dir = Path("./local_teacher_kuzu").resolve()
-                repo_root = Path(__file__).parent.parent.resolve()
-                if not str(kuzu_dir).startswith(str(repo_root)):
+                repo_root = Path(__file__).resolve().parent.parent
+                try:
+                    kuzu_dir.relative_to(repo_root)
+                except ValueError:
                     print(
                         "[-] Error de seguridad: kuzu_path está fuera del directorio del proyecto."
                     )
@@ -171,8 +174,6 @@ class LocalTeacherApp:
                 print(f"[-] Error al limpiar caché semántico: {e}")
 
             try:
-                from local_teacher.ingestion.state_manager import get_state_manager
-
                 sm = get_state_manager()
                 sm.clear()
                 print(
