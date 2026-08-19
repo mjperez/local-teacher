@@ -1,6 +1,8 @@
 import sqlite3
 import logging
 from pathlib import Path
+import threading
+import contextlib
 
 _log = logging.getLogger(__name__)
 
@@ -180,14 +182,15 @@ class StateManager:
 
 
 _global_state_manager = None
-
+_state_manager_lock = threading.Lock()
 
 def get_state_manager() -> StateManager:
     """Devuelve la instancia global (singleton) del gestor de estado de producción."""
     global _global_state_manager
-    if _global_state_manager is None:
-        _global_state_manager = StateManager()
-    return _global_state_manager
+    with _state_manager_lock:
+        if _global_state_manager is None:
+            _global_state_manager = StateManager()
+        return _global_state_manager
 
 
 def create_state_manager(db_path: Path | str) -> StateManager:
@@ -200,12 +203,31 @@ def create_state_manager(db_path: Path | str) -> StateManager:
 
 
 def override_state_manager(instance: StateManager | None) -> None:
-    """Reemplaza el singleton global con una instancia específica.
+    """[OBSOLETO] Reemplaza el singleton global con una instancia específica.
 
-    Usar en tests/benchmarks ANTES de llamar a cualquier módulo de ingesta
-    para garantizar que todos usen la BD de checkpoints aislada.
-    Llamar a `get_state_manager()` sin argumentos restaura el comportamiento
-    normal al siguiente ciclo si la instancia se pone a None externamente.
+    AVISO: Mutar este singleton globalmente puede causar condiciones de carrera 
+    o filtraciones de estado entre tests. Usa `isolated_state_manager` en su lugar.
     """
     global _global_state_manager
-    _global_state_manager = instance
+    with _state_manager_lock:
+        _global_state_manager = instance
+
+
+@contextlib.contextmanager
+def isolated_state_manager(db_path: Path | str):
+    """Context manager seguro para usar un StateManager aislado en tests.
+    
+    Asegura que la instancia global se reemplace por una temporal solo 
+    durante la ejecución del bloque 'with', y luego restaura la original,
+    incluso si ocurren excepciones.
+    """
+    global _global_state_manager
+    with _state_manager_lock:
+        previous_instance = _global_state_manager
+        _global_state_manager = StateManager(db_path=db_path)
+    
+    try:
+        yield _global_state_manager
+    finally:
+        with _state_manager_lock:
+            _global_state_manager = previous_instance

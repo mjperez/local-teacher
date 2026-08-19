@@ -11,10 +11,12 @@ class RedisCacheStore:
     """
     Caché Semántico usando Redis Stack (RediSearch) y langchain_community.vectorstores.Redis.
     """
+    INDEX_PREFIX = "local_teacher_"
+
     def __init__(self, embeddings: Embeddings, host: str = "localhost", port: int = 6379):
         self.redis_url = f"redis://{host}:{port}"
         self.embeddings = embeddings
-        self.index_name = "local_teacher_cache"
+        self.index_name = f"{self.INDEX_PREFIX}cache"
         try:
             import redis
             r = redis.Redis.from_url(self.redis_url)
@@ -58,9 +60,9 @@ class RedisCacheStore:
         except Exception as e:
             _log.warning(f"Error guardando en caché semántica: {e}")
 
-    def clear(self) -> None:
+    def clear(self) -> bool:
         if not self.connected:
-            return
+            return False
         
         # Guardrail de seguridad: requerir confirmación explícita para evitar pérdida
         # accidental de datos en instancias de Redis compartidas.
@@ -71,16 +73,17 @@ class RedisCacheStore:
                 "    Configura 'REDIS_ALLOW_DROP=true' en tu entorno si estás seguro de que\n"
                 "    el servidor Redis es de uso exclusivo para esta aplicación."
             )
-            return
+            return False
 
         # Guardrail adicional: solo borrar índices que pertenezcan a esta app.
-        if not self.index_name.startswith("local_teacher_"):
+        if not self.index_name.startswith(self.INDEX_PREFIX):
             _log.error(
-                "[!] Abortando clear(): el index_name '%s' no tiene el prefijo 'local_teacher_'. "
+                "[!] Abortando clear(): el index_name '%s' no tiene el prefijo '%s'. "
                 "Verifica la configuración antes de continuar.",
                 self.index_name,
+                self.INDEX_PREFIX,
             )
-            return
+            return False
         try:
             from langchain_community.vectorstores import Redis
             _log.warning(
@@ -90,8 +93,10 @@ class RedisCacheStore:
             )
             Redis.drop_index(index_name=self.index_name, delete_documents=True, redis_url=self.redis_url)
             _log.info("[*] Índice de Caché Semántico (Redis) eliminado correctamente.")
+            return True
         except Exception as e:
             _log.warning(f"Error al limpiar caché semántica: {e}")
+            return False
 
 def get_semantic_cache_store(embeddings: Embeddings) -> RedisCacheStore:
     """Inicializa la conexión a Redis Cache."""

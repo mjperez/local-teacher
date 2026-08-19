@@ -1,7 +1,12 @@
 import logging
-from typing import Iterator, Optional, Any
+from typing import Iterator, Optional, Any, Protocol, List, Tuple
 from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
+
+class SemanticCacheProtocol(Protocol):
+    def similarity_search_with_score(self, query: str, k: int = 1) -> List[Tuple[Document, float]]: ...
+    def add_texts(self, texts: List[str], metadatas: List[dict]) -> None: ...
 
 from local_teacher.query.pipeline import PipelineConsulta
 from local_teacher.query.graph_search import obtener_contexto_grafo
@@ -25,7 +30,7 @@ def stream_consulta(
     consulta: str,
     chat_history: list = None,
     busqueda_web_alternativa: bool = False,
-    cache_store: Optional[Any] = None,
+    cache_store: Optional[SemanticCacheProtocol] = None,
     usar_critico: bool = True,
     llm_critic: Optional[BaseChatModel] = None,
     llm_fast: Optional[BaseChatModel] = None,
@@ -52,13 +57,18 @@ def stream_consulta(
         texto = texto + " " * max(0, terminal_width - len(texto) - 1)
 
         if saltar_linea and not hasattr(_progreso_print, "terminado"):
-            texto = texto + "\n\n"
             _progreso_print.terminado = True
-
-        try:
-            print(texto, end="", flush=True)
-        except UnicodeEncodeError:
-            print(texto.replace("█", "#").replace("░", "-"), end="", flush=True)
+            try:
+                print(texto, flush=True)
+                print() # Extra blank line
+            except UnicodeEncodeError:
+                print(texto.replace("█", "=").replace("░", "-"), flush=True)
+                print()
+        else:
+            try:
+                print(texto, end="", flush=True)
+            except UnicodeEncodeError:
+                print(texto.replace("█", "=").replace("░", "-"), end="", flush=True)
 
     yield from pipeline.ejecutar(consulta, chat_history, _progreso_print)
 

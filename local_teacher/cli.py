@@ -143,18 +143,23 @@ class LocalTeacherApp:
 
             if self.args.graph:
                 kuzu_path = "./local_teacher_kuzu"
-                for f in glob.glob(kuzu_path + "*"):
-                    if os.path.isdir(f):
-                        shutil.rmtree(f)
-                    else:
-                        os.remove(f)
+                for suffix in ["", ".wal", ".tmp", ".lck", ".lock"]:
+                    f = kuzu_path + suffix
+                    if os.path.exists(f):
+                        if os.path.isdir(f):
+                            shutil.rmtree(f)
+                        else:
+                            os.remove(f)
                 print("[*] Base de datos de grafos limpiada por --recreate.")
 
             try:
                 from local_teacher.storage.redis_cache import get_semantic_cache_store
 
                 cache_store = get_semantic_cache_store(self.embeddings)
-                cache_store.clear()
+                if cache_store.clear():
+                    print("[*] Caché semántico (Redis) limpiado por --recreate.")
+                else:
+                    print("[-] Limpieza de caché semántico omitida o bloqueada por guardrails.")
             except Exception as e:
                 print(f"[-] Error al limpiar caché semántico: {e}")
 
@@ -195,6 +200,9 @@ class LocalTeacherApp:
         )
 
         try:
+            if getattr(self.args, "workers", None) is not None:
+                os.environ["INGEST_WORKERS"] = str(self.args.workers)
+
             # Exponer el número de workers via env var para que document.py pueda
             # escalar num_threads de Docling y evitar sobresuscripción de CPU.
             docs = cargar_archivos(
