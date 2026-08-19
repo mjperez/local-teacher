@@ -1,7 +1,7 @@
 import re
 import time
 import logging
-from typing import Iterator, Optional
+from typing import Iterator, Optional, Any
 from langchain_core.documents import Document
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.retrievers import BaseRetriever
@@ -25,7 +25,7 @@ class PipelineConsulta:
         retriever: BaseRetriever,
         llm: BaseChatModel,
         busqueda_web_alternativa: bool = False,
-        cache_store: Optional[BaseRetriever] = None,
+        cache_store: Optional[Any] = None,
         usar_critico: bool = True,
         llm_critic: Optional[BaseChatModel] = None,
         kuzu_path: str = "./local_teacher_kuzu",

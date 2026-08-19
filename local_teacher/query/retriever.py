@@ -1,5 +1,5 @@
 import logging
-from typing import Iterator, Optional
+from typing import Iterator, Optional, Any
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.retrievers import BaseRetriever
 
@@ -25,7 +25,7 @@ def stream_consulta(
     consulta: str,
     chat_history: list = None,
     busqueda_web_alternativa: bool = False,
-    cache_store: Optional[BaseRetriever] = None,
+    cache_store: Optional[Any] = None,
     usar_critico: bool = True,
     llm_critic: Optional[BaseChatModel] = None,
     llm_fast: Optional[BaseChatModel] = None,
@@ -44,20 +44,21 @@ def stream_consulta(
     def _progreso_print(
         paso: int, total: int = 4, mensaje: str = "", saltar_linea: bool = False
     ) -> None:
+        import shutil
+        terminal_width = shutil.get_terminal_size((80, 20)).columns
         porcentaje = int((paso / total) * 100)
         barra = "█" * (porcentaje // 10) + "░" * (10 - (porcentaje // 10))
-        texto = f"\r[{barra}] {porcentaje:3}% | {mensaje}".ljust(80)
+        texto = f"\r[{barra}] {porcentaje:3}% | {mensaje}"
+        texto = texto + " " * max(0, terminal_width - len(texto) - 1)
 
-        if saltar_linea:
-            try:
-                print(texto, flush=True)
-            except UnicodeEncodeError:
-                print(texto.replace("█", "#").replace("░", "-"), flush=True)
-        else:
-            try:
-                print(texto, end="", flush=True)
-            except UnicodeEncodeError:
-                print(texto.replace("█", "#").replace("░", "-"), end="", flush=True)
+        if saltar_linea and not hasattr(_progreso_print, "terminado"):
+            texto = texto + "\n\n"
+            _progreso_print.terminado = True
+
+        try:
+            print(texto, end="", flush=True)
+        except UnicodeEncodeError:
+            print(texto.replace("█", "#").replace("░", "-"), end="", flush=True)
 
     yield from pipeline.ejecutar(consulta, chat_history, _progreso_print)
 

@@ -100,7 +100,7 @@ def build_knowledge_graph(docs: list[Document], llm: BaseChatModel, output_path:
 
         try:
             # Predicción en batch: una sola pasada por el modelo para N textos
-            all_entities = model.inference(batch_texts, labels, threshold=0.5)
+            all_entities = model.batch_predict_entities(batch_texts, labels, threshold=0.5)
             
             # Recolectar todos los nodos y aristas del lote
             all_nodes = set()
@@ -125,6 +125,7 @@ def build_knowledge_graph(docs: list[Document], llm: BaseChatModel, output_path:
             # Si cualquier inserción falla, se hace ROLLBACK para evitar escribir
             # un lote parcialmente inconsistente en el grafo.
             conn.execute("BEGIN TRANSACTION")
+            transaction_open = True
             batch_has_errors = False
             try:
                 for node_name in all_nodes:
@@ -151,8 +152,10 @@ def build_knowledge_graph(docs: list[Document], llm: BaseChatModel, output_path:
                         f"Lote {batch_start}-{batch_end} tuvo errores de inserción; ejecutando ROLLBACK."
                     )
                     conn.execute("ROLLBACK")
+                    transaction_open = False
                 else:
                     conn.execute("COMMIT")
+                    transaction_open = False
                     
                     # Marcar todos los fragmentos del lote como procesados SOLO si hubo COMMIT
                     for idx in batch_indices:
@@ -162,12 +165,15 @@ def build_knowledge_graph(docs: list[Document], llm: BaseChatModel, output_path:
                     # Actualizar progreso DESPUÉS de confirmar el lote para reflejar conteo real
                     print(f"\r    - {len(processed_indices)}/{total_docs} fragmentos completados...", end="", flush=True)
             except Exception as tx_err:
-                _log.error(f"Fallo en transacción KùzuDB, ejecutando ROLLBACK: {tx_err}")
-                try:
-                    conn.execute("ROLLBACK")
-                except Exception:
-                    pass
+                _log.error(f"Excepción en el lote {batch_start}-{batch_end}: {tx_err}")
                 raise
+            finally:
+                if transaction_open:
+                    try:
+                        conn.execute("ROLLBACK")
+                        _log.warning("ROLLBACK ejecutado desde finally.")
+                    except Exception:
+                        pass
                 
         except Exception as e:
             _log.error(f"Error procesando lote {batch_start}-{batch_end}: {e}")

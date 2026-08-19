@@ -199,7 +199,7 @@ def create_state_manager(db_path: Path | str) -> StateManager:
     return StateManager(db_path=db_path)
 
 
-def override_state_manager(instance: StateManager) -> None:
+def override_state_manager(instance: StateManager | None) -> None:
     """Reemplaza el singleton global con una instancia específica.
 
     Usar en tests/benchmarks ANTES de llamar a cualquier módulo de ingesta

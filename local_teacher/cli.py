@@ -1,6 +1,10 @@
 import os
 import sys
 import warnings
+import time
+import shutil
+import glob
+import re
 
 if __name__ == "__main__":
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -77,7 +81,6 @@ def _print_sources(docs):
         if not seccion_str:
             seccion = "N/A"
         else:
-            import re
             seccion = re.sub(r"^#+\s*", "", seccion_str).strip()
 
         tipo = meta.get("tipo_archivo", "texto")
@@ -129,14 +132,10 @@ class LocalTeacherApp:
         self.chat_history = []
 
     def ingest(self):
-        import time
-
         t0_ingest = time.time()
         print(f"[*] Iniciando carga de documentos desde: {self.args.ingest}")
 
         if self.args.recreate:
-            import shutil
-
             # Limpiar Qdrant LocalFileStore
             parent_store = "./.local_teacher_parents"
             if os.path.exists(parent_store):
@@ -144,13 +143,11 @@ class LocalTeacherApp:
 
             if self.args.graph:
                 kuzu_path = "./local_teacher_kuzu"
-                if os.path.exists(kuzu_path):
-                    if os.path.isdir(kuzu_path):
-                        shutil.rmtree(kuzu_path)
+                for f in glob.glob(kuzu_path + "*"):
+                    if os.path.isdir(f):
+                        shutil.rmtree(f)
                     else:
-                        os.remove(kuzu_path)
-                if os.path.exists(kuzu_path + ".wal"):
-                    os.remove(kuzu_path + ".wal")
+                        os.remove(f)
                 print("[*] Base de datos de grafos limpiada por --recreate.")
 
             try:
