@@ -61,8 +61,19 @@ class RedisCacheStore:
     def clear(self) -> None:
         if not self.connected:
             return
-        # Guardrail: solo borrar índices que pertenezcan a esta app para evitar
-        # destruir datos de otros servicios que compartan el mismo servidor Redis.
+        
+        # Guardrail de seguridad: requerir confirmación explícita para evitar pérdida
+        # accidental de datos en instancias de Redis compartidas.
+        if os.getenv("REDIS_ALLOW_DROP", "false").lower() != "true":
+            _log.error(
+                "[!] Operación de borrado de caché semántica denegada.\n"
+                "    La eliminación de índices en Redis está bloqueada por seguridad.\n"
+                "    Configura 'REDIS_ALLOW_DROP=true' en tu entorno si estás seguro de que\n"
+                "    el servidor Redis es de uso exclusivo para esta aplicación."
+            )
+            return
+
+        # Guardrail adicional: solo borrar índices que pertenezcan a esta app.
         if not self.index_name.startswith("local_teacher_"):
             _log.error(
                 "[!] Abortando clear(): el index_name '%s' no tiene el prefijo 'local_teacher_'. "

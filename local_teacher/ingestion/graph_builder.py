@@ -153,6 +153,14 @@ def build_knowledge_graph(docs: list[Document], llm: BaseChatModel, output_path:
                     conn.execute("ROLLBACK")
                 else:
                     conn.execute("COMMIT")
+                    
+                    # Marcar todos los fragmentos del lote como procesados SOLO si hubo COMMIT
+                    for idx in batch_indices:
+                        processed_indices.add(idx)
+                        sm.mark_graph_chunk(idx)
+
+                    # Actualizar progreso DESPUÉS de confirmar el lote para reflejar conteo real
+                    print(f"\r    - {len(processed_indices)}/{total_docs} fragmentos completados...", end="", flush=True)
             except Exception as tx_err:
                 _log.error(f"Fallo en transacción KùzuDB, ejecutando ROLLBACK: {tx_err}")
                 try:
@@ -160,14 +168,6 @@ def build_knowledge_graph(docs: list[Document], llm: BaseChatModel, output_path:
                 except Exception:
                     pass
                 raise
-            
-            # Marcar todos los fragmentos del lote como procesados
-            for idx in batch_indices:
-                processed_indices.add(idx)
-                sm.mark_graph_chunk(idx)
-
-            # Actualizar progreso DESPUÉS de confirmar el lote para reflejar conteo real
-            print(f"\r    - {len(processed_indices)}/{total_docs} fragmentos completados...", end="", flush=True)
                 
         except Exception as e:
             _log.error(f"Error procesando lote {batch_start}-{batch_end}: {e}")

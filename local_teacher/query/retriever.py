@@ -46,11 +46,7 @@ def stream_consulta(
     ) -> None:
         porcentaje = int((paso / total) * 100)
         barra = "█" * (porcentaje // 10) + "░" * (10 - (porcentaje // 10))
-        texto = f"\r[{barra}] {porcentaje:3}% | {mensaje}" + " " * 30
-
-        if paso >= 3 and not hasattr(_progreso_print, "ya_salto"):
-            print("\n")
-            _progreso_print.ya_salto = True
+        texto = f"\r[{barra}] {porcentaje:3}% | {mensaje}".ljust(80)
 
         if saltar_linea:
             try:

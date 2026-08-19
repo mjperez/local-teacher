@@ -26,7 +26,7 @@ def _calcular_hash(ruta_archivo: Path) -> str:
         return str(ruta_archivo)
 
 
-def _get_cache_path(ruta_original: Path) -> Path:
+def get_cache_path(ruta_original: Path) -> Path:
     """Calcula la ruta de la caché separándola de los documentos originales."""
     if ruta_original.is_dir():
         cache_dir = ruta_original / "parsed"
@@ -96,7 +96,7 @@ def cargar_archivos(
     docs: list[Document] = []
     items = [ruta_carpeta] if ruta_carpeta.is_file() else list(ruta_carpeta.rglob("*"))
 
-    cache_path = _get_cache_path(ruta_carpeta)
+    cache_path = get_cache_path(ruta_carpeta)
     sm = get_state_manager()
     archivos_procesados = sm.get_processed_files()
 
@@ -160,7 +160,7 @@ def cargar_archivos(
 
 def guardar_cache_jsonl(docs: list[Document], ruta_original: Path | str) -> None:
     """Guarda la lista de documentos en formato JSONL como caché local."""
-    cache_path = _get_cache_path(Path(ruta_original))
+    cache_path = get_cache_path(Path(ruta_original))
     if str(ruta_original).endswith(".jsonl") or cache_path.exists():
         return
 

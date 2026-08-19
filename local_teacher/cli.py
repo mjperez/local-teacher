@@ -69,6 +69,17 @@ def _print_sources(docs):
         fuente_nombre = os.path.basename(fuente)
         pagina = meta.get("pagina", "N/A")
         seccion = meta.get("ruta_seccion", "N/A")
+        
+        if not pagina or str(pagina).strip() == "":
+            pagina = "N/A"
+        
+        seccion_str = str(seccion).strip()
+        if not seccion_str:
+            seccion = "N/A"
+        else:
+            import re
+            seccion = re.sub(r"^#+\s*", "", seccion_str).strip()
+
         tipo = meta.get("tipo_archivo", "texto")
         ruta_recurso = meta.get("ruta_recurso", "N/A")
 
@@ -162,9 +173,9 @@ class LocalTeacherApp:
                 print(f"[-] Error al limpiar StateManager: {e}")
 
             try:
-                from local_teacher.ingestion.loader import _get_cache_path
+                from local_teacher.ingestion.loader import get_cache_path
 
-                cache_file = _get_cache_path(Path(self.args.ingest))
+                cache_file = get_cache_path(Path(self.args.ingest))
                 if cache_file.exists():
                     cache_file.unlink()
                 print("[*] Caché de documentos locales limpiado por --recreate.")
@@ -189,7 +200,6 @@ class LocalTeacherApp:
         try:
             # Exponer el número de workers via env var para que document.py pueda
             # escalar num_threads de Docling y evitar sobresuscripción de CPU.
-            os.environ["INGEST_WORKERS"] = str(self.args.workers)
             docs = cargar_archivos(
                 self.args.ingest,
                 extraer_figuras=self.args.figures,
@@ -243,7 +253,7 @@ class LocalTeacherApp:
     def run_chat(self):
         print("[*] Conectando a Qdrant...")
         self.retriever = self.retriever or get_qdrant_retriever(self.embeddings)
-        self.cache_store = get_semantic_cache_store(self.embeddings)
+        self.cache_store = get_semantic_cache_store(self.embeddings) if not getattr(self.args, 'no_cache', False) else None
 
         consulta_actual = self.args.query
         while True:
@@ -309,6 +319,11 @@ def main() -> None:
     )
     parser.add_argument(
         "--recreate", action="store_true", help="Recreate Qdrant collection"
+    )
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Ignorar caché semántico (siempre re-calcular respuesta)",
     )
     parser.add_argument(
         "--graph",

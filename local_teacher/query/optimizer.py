@@ -142,6 +142,7 @@ def reescribir_consulta(
                 "4. Extrae los nombres de entidades y conceptos técnicos más relevantes.\n"
                 "5. Identifica la intención: 'conceptual' (teoría), 'ejercicio' (problema práctico) o 'aclaracion' (duda rápida).\n"
                 "6. Mantén el idioma de la consulta.\n"
+                "7. IMPORTANTE: NO escribas código SQL, no escribas SELECT, y no uses sintaxis de base de datos relacional. La salida debe ser JSON puro con texto en lenguaje natural.\n"
                 "Responde en formato JSON estricto con las siguientes claves: 'consulta', 'capitulo', 'entidades', 'intencion'.",
             ),
             (
@@ -172,10 +173,10 @@ def reescribir_consulta(
         future = _optimizer_executor.submit(_invocar)
         try:
             try:
-                _timeout = max(5, min(300, int(os.getenv("OPTIMIZER_TIMEOUT_SECS", "20"))))
+                _timeout = max(5, min(300, int(os.getenv("OPTIMIZER_TIMEOUT_SECS", "45"))))
             except (ValueError, TypeError):
-                _log.warning("OPTIMIZER_TIMEOUT_SECS tiene un valor inválido; usando 20s por defecto.")
-                _timeout = 20
+                _log.warning("OPTIMIZER_TIMEOUT_SECS tiene un valor inválido; usando 45s por defecto.")
+                _timeout = 45
             return future.result(timeout=_timeout)
         except concurrent.futures.TimeoutError:
             _log.warning("Tiempo de espera agotado al optimizar consulta. Usando consulta original.")
