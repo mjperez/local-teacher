@@ -13,10 +13,10 @@ class RedisCacheStore:
     """
     INDEX_PREFIX = "local_teacher_"
 
-    def __init__(self, embeddings: Embeddings, host: str = "localhost", port: int = 6379):
+    def __init__(self, embeddings: Embeddings, host: str = "localhost", port: int = 6379, index_name: str | None = None):
         self.redis_url = f"redis://{host}:{port}"
         self.embeddings = embeddings
-        self.index_name = f"{self.INDEX_PREFIX}cache"
+        self.index_name = index_name if index_name else f"{self.INDEX_PREFIX}cache"
         try:
             import redis
             r = redis.Redis.from_url(self.redis_url)
@@ -97,8 +97,17 @@ class RedisCacheStore:
             _log.warning(f"Error al limpiar caché semántica: {e}")
             return False
 
-def get_semantic_cache_store(embeddings: Embeddings) -> RedisCacheStore:
-    """Inicializa la conexión a Redis Cache."""
+def get_semantic_cache_store(embeddings: Embeddings, index_name: str | None = None) -> RedisCacheStore:
+    """Inicializa la conexión a Redis Cache.
+    
+    Si se provee index_name, DEBE comenzar con 'local_teacher_' para 
+    que el método clear() pueda limpiarlo de forma segura.
+    """
+    if index_name and not index_name.startswith(RedisCacheStore.INDEX_PREFIX):
+        _log.warning(
+            f"El index_name '{index_name}' provisto no comienza con '{RedisCacheStore.INDEX_PREFIX}'. "
+            "El método clear() lo ignorará por seguridad."
+        )
     host = os.getenv("REDIS_HOST", "localhost")
     port = int(os.getenv("REDIS_PORT", "6379"))
-    return RedisCacheStore(embeddings=embeddings, host=host, port=port)
+    return RedisCacheStore(embeddings=embeddings, host=host, port=port, index_name=index_name)
