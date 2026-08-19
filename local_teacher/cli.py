@@ -57,13 +57,34 @@ logging.getLogger("multipart").setLevel(logging.WARNING)
 logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
 
 
-def _print_sources(docs):
+def _print_sources(docs, respuesta_final=None):
     if not docs:
         return
+
+    import re
+    citados = set()
+    if respuesta_final:
+        for match in re.finditer(r'\[([\d,\s]+)\]', respuesta_final):
+            numeros = match.group(1).replace(',', ' ').split()
+            for num in numeros:
+                if num.isdigit():
+                    citados.add(int(num))
+
+    docs_a_imprimir = []
+    if citados:
+        for i, d in enumerate(docs, 1):
+            if i in citados:
+                docs_a_imprimir.append((i, d))
+    else:
+        docs_a_imprimir = list(enumerate(docs, 1))
+
+    if not docs_a_imprimir:
+        return
+
     print("\n\n---\nFuentes citadas:")
 
     grupos = {}
-    for i, d in enumerate(docs, 1):
+    for i, d in docs_a_imprimir:
         meta = d.metadata
         fuente = meta.get("fuente", "Desconocida")
         fuente_nombre = os.path.basename(fuente)
@@ -79,7 +100,7 @@ def _print_sources(docs):
 
     for clave, indices in grupos.items():
         fuente_nombre, pagina, seccion, tipo, ruta_recurso = clave
-        inds_str = ", ".join(f"[{i}]" for i in indices)
+        inds_str = ", ".join(f"[{i}]" for i in sorted(indices))
         info = (
             f"{inds_str} Archivo: {fuente_nombre} | Pag: {pagina} | Sección: {seccion}"
         )
@@ -116,6 +137,10 @@ class LocalTeacherApp:
         self.retriever = None
         self.cache_store = None
         self.chat_history = []
+        self.busqueda_web_alternativa = getattr(args, "web", False) is not False
+        self.web_filter = args.web if isinstance(getattr(args, "web", False), str) else ""
+        
+        print(f"[*] Modelos inicializados (LLM: {args.ollama_llm}, Embed: {args.ollama_embed}, Supervisor: {args.ollama_critic_llm})")
 
     def ingest(self):
         import time
@@ -243,7 +268,11 @@ class LocalTeacherApp:
     def run_chat(self):
         print("[*] Conectando a Qdrant...")
         self.retriever = self.retriever or get_qdrant_retriever(self.embeddings)
-        self.cache_store = get_semantic_cache_store(self.embeddings)
+        
+        if not getattr(self.args, "no_cache", False):
+            self.cache_store = get_semantic_cache_store(self.embeddings)
+        else:
+            self.cache_store = None
 
         consulta_actual = self.args.query
         while True:
@@ -253,7 +282,8 @@ class LocalTeacherApp:
                 self.llm,
                 consulta_actual,
                 chat_history=self.chat_history,
-                busqueda_web_alternativa=self.args.web_fallback,
+                busqueda_web_alternativa=self.busqueda_web_alternativa,
+                web_filter=self.web_filter,
                 cache_store=self.cache_store,
                 usar_critico=self.args.critic,
                 llm_critic=self.llm_critic,
@@ -270,7 +300,7 @@ class LocalTeacherApp:
                 if "context_docs" in chunk:
                     context_docs = chunk["context_docs"]
 
-            _print_sources(context_docs)
+            _print_sources(context_docs, respuesta_final=respuesta_final)
 
             # Guardar en memoria
             self.chat_history.append(HumanMessage(content=consulta_actual))
@@ -280,10 +310,35 @@ class LocalTeacherApp:
             try:
                 print("\n")
                 consulta_actual = input(
-                    "Haz una pregunta de seguimiento (o 'salir' para terminar): "
-                )
-                if consulta_actual.strip().lower() in ("salir", "exit", "quit"):
+                    "Haz una pregunta de seguimiento (o 'salir' para terminar, '/web' para opciones): "
+                ).strip()
+                
+                if consulta_actual.lower() in ("salir", "exit", "quit"):
                     break
+                    
+                if consulta_actual.startswith("/web"):
+                    comando = consulta_actual[4:].strip()
+                    if comando.lower() in ("off", "false"):
+                        self.busqueda_web_alternativa = False
+                        self.web_filter = ""
+                        print("[*] Búsqueda web deshabilitada.")
+                    elif comando.lower() in ("on", "true", ""):
+                        self.busqueda_web_alternativa = True
+                        self.web_filter = ""
+                        print("[*] Búsqueda web habilitada (sin filtros).")
+                    elif comando.lower().startswith("filter "):
+                        self.busqueda_web_alternativa = True
+                        self.web_filter = comando[7:].strip()
+                        print(f"[*] Búsqueda web habilitada con filtro: {self.web_filter}")
+                    else:
+                        print("[-] Uso incorrecto de /web. Opciones:")
+                        print("    /web on          -> Activar búsqueda web")
+                        print("    /web off         -> Desactivar búsqueda web")
+                        print("    /web filter <x>  -> Activar con filtro (ej: /web filter site:edu)")
+                        
+                    consulta_actual = input("Ingresa tu pregunta ahora: ").strip()
+                    if not consulta_actual or consulta_actual.lower() in ("salir", "exit", "quit"):
+                        break
             except (KeyboardInterrupt, EOFError):
                 break
 
@@ -317,9 +372,11 @@ def main() -> None:
         help="Extract and build Knowledge Graph (GraphRAG). Enabled by default.",
     )
     parser.add_argument(
-        "--web-fallback",
-        action="store_true",
-        help="Allow web fallback if local documents don't have the answer",
+        "--web",
+        nargs="?",
+        const="",
+        default=False,
+        help="Habilita búsqueda web. Opcionalmente especifica un filtro (ej: --web 'site:edu')",
     )
     parser.add_argument(
         "--critic",
@@ -342,6 +399,11 @@ def main() -> None:
     )
 
     # Modelos
+    parser.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="Desactiva el caché semántico para forzar la re-generación de respuestas.",
+    )
     parser.add_argument(
         "--provider", default=os.getenv("LOCAL_TEACHER_PROVIDER", "ollama")
     )

@@ -25,6 +25,7 @@ class PipelineConsulta:
         retriever: BaseRetriever,
         llm: BaseChatModel,
         busqueda_web_alternativa: bool = False,
+        web_filter: str = "",
         cache_store: Optional[BaseRetriever] = None,
         usar_critico: bool = True,
         llm_critic: Optional[BaseChatModel] = None,
@@ -35,6 +36,7 @@ class PipelineConsulta:
         self.llm = llm
         self.llm_fast = llm_fast
         self.busqueda_web_alternativa = busqueda_web_alternativa
+        self.web_filter = web_filter
         self.cache_store = cache_store
         self.usar_critico = usar_critico
         self.llm_critic = llm_critic
@@ -172,8 +174,7 @@ class PipelineConsulta:
                 self._progreso(
                     2,
                     4,
-                    f"Generando respuesta (Intento {intento}/3)...",
-                    saltar_linea=True,
+                    f"Generando respuesta (Intento {intento}/3)..."
                 )
 
             # Respaldo web en el intento 2 si está activado
@@ -181,14 +182,19 @@ class PipelineConsulta:
                 self._progreso(
                     2,
                     4,
-                    "Consultando información adicional en la web...",
-                    saltar_linea=True,
+                    "Consultando información adicional en la web..."
                 )
                 try:
                     import concurrent.futures
+                    
+                    consulta_busqueda = consulta_optimizada
+                    if self.web_filter:
+                        consulta_busqueda = f"{consulta_optimizada} {self.web_filter}"
+
                     t_web_start = time.time()
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as exec_web:
-                        futuro = exec_web.submit(self.herramienta_busqueda.invoke, consulta_optimizada)
+                    exec_web = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+                    with exec_web:
+                        futuro = exec_web.submit(self.herramienta_busqueda.invoke, consulta_busqueda)
                         resultados_web = futuro.result(timeout=10)
                     tracker.add_latency("Generacion_BusquedaWeb", t_web_start)
                     tracker.set_meta("web_search_used", True)
@@ -212,8 +218,7 @@ class PipelineConsulta:
             }
 
             if self.usar_critico:
-                self._progreso(3, 4, "Tutor local generando y evaluando (esto tomará unos segundos)...", saltar_linea=True)
-                yield {"answer": f"\n*[Tutor local generando y evaluando internamente (Intento {intento}/3)...]*\n"}
+                self._progreso(3, 4, "Tutor local generando y evaluando (esto tomará unos segundos)...")
                 respuesta = cadena_tutor.invoke(args_invoke)
                 borrador = (
                     respuesta.content
@@ -239,10 +244,20 @@ class PipelineConsulta:
             ).strip()
 
             # Verificación de admisión honesta de ignorancia
+            es_ignorancia = False
             if (
-                "No poseo información suficiente" in borrador_limpio
+                "no poseo información suficiente" in borrador_limpio.lower()
                 or "no está cubierto" in borrador_limpio.lower()
             ):
+                if len(borrador_limpio) < 250:
+                    es_ignorancia = True
+                else:
+                    # El modelo dio una respuesta pero también incluyó la frase de fallback por error.
+                    # Removemos la frase para no confundir al usuario.
+                    borrador = re.sub(r'(?i)\n*este tema no est[áa] cubierto en el material cargado\.?', '', borrador).strip()
+                    borrador_limpio = re.sub(r'(?i)\n*este tema no est[áa] cubierto en el material cargado\.?', '', borrador_limpio).strip()
+
+            if es_ignorancia:
                 if self.usar_critico:
                     self._progreso(4, 4, "¡Finalizado!", saltar_linea=True)
                     yield {"answer": borrador}
@@ -263,8 +278,7 @@ class PipelineConsulta:
                     self._progreso(
                         3,
                         4,
-                        "Crítico evaluando precisión y alucinaciones...",
-                        saltar_linea=True,
+                        "Supervisor evaluando precisión y alucinaciones..."
                     )
                     t_crit_start = time.time()
                     decision_critico = evaluar_borrador(

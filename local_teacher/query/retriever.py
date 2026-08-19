@@ -25,6 +25,7 @@ def stream_consulta(
     consulta: str,
     chat_history: list = None,
     busqueda_web_alternativa: bool = False,
+    web_filter: str = "",
     cache_store: Optional[BaseRetriever] = None,
     usar_critico: bool = True,
     llm_critic: Optional[BaseChatModel] = None,
@@ -35,6 +36,7 @@ def stream_consulta(
         retriever=retriever,
         llm=llm,
         busqueda_web_alternativa=busqueda_web_alternativa,
+        web_filter=web_filter,
         cache_store=cache_store,
         usar_critico=usar_critico,
         llm_critic=llm_critic,
@@ -46,11 +48,7 @@ def stream_consulta(
     ) -> None:
         porcentaje = int((paso / total) * 100)
         barra = "█" * (porcentaje // 10) + "░" * (10 - (porcentaje // 10))
-        texto = f"\r[{barra}] {porcentaje:3}% | {mensaje}" + " " * 30
-
-        if paso >= 3 and not hasattr(_progreso_print, "ya_salto"):
-            print("\n")
-            _progreso_print.ya_salto = True
+        texto = f"\r[{barra}] {porcentaje:3}% | {mensaje}".ljust(120)
 
         if saltar_linea:
             try:

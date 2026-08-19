@@ -43,7 +43,7 @@ def crear_cadena_tutor(
     """Construye la cadena de generación pedagógica según la intención del estudiante."""
     system_base = (
         "REGLA PRINCIPAL: Responde ÚNICAMENTE con información que aparezca en el contexto recuperado. "
-        "Si la información no está en el contexto, responde: 'Este tema no está cubierto en el material cargado.' "
+        "Si la información no está en el contexto, responde EXCLUSIVAMENTE con la frase: 'Este tema no está cubierto en el material cargado.' "
         "NUNCA uses tu conocimiento interno para complementar o enriquecer la respuesta.\n\n"
         "Eres un tutor educativo. "
     )
@@ -68,7 +68,7 @@ def crear_cadena_tutor(
         "1. Basa tu respuesta EXCLUSIVAMENTE en el contexto recuperado. Puedes parafrasear y reformular para enseñar mejor, pero toda afirmación debe provenir del material.\n"
         "2. Si te preguntan de qué trata el texto o piden un resumen general, sintetiza los temas principales basados únicamente en el contexto recuperado.\n"
         "3. Incluye Citas en Línea (ej. '...el motor se enciende [2].') al final de CADA afirmación usando el número de fuente correspondiente.\n"
-        "4. Si la respuesta NO ESTÁ en el contexto, responde: 'Este tema no está cubierto en el material cargado.' NO inventes.\n"
+        "4. Si la respuesta NO ESTÁ en el contexto, responde EXCLUSIVAMENTE: 'Este tema no está cubierto en el material cargado.' NO inventes ni agregues más información.\n"
         "5. Si no sabes, responde SÓLO con: REQUIRE_WEB_SEARCH (solo aplicable si busqueda_web_alternativa=True)."
     )
 
