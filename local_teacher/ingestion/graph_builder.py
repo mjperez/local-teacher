@@ -99,8 +99,14 @@ def build_knowledge_graph(docs: list[Document], llm: BaseChatModel, output_path:
             continue
 
         try:
-            # Predicción en batch: una sola pasada por el modelo para N textos
-            all_entities = model.inference(batch_texts, labels, threshold=0.5)
+            # Adaptador para robustez entre versiones de GLiNER
+            if hasattr(model, "batch_predict_entities"):
+                all_entities = model.batch_predict_entities(batch_texts, labels, threshold=0.5)
+            elif hasattr(model, "predict_entities"):
+                all_entities = [model.predict_entities(text, labels, threshold=0.5) for text in batch_texts]
+            else:
+                _log.error("GLiNER model no soporta extracción de entidades (versión incompatible).")
+                continue
             
 
             
@@ -126,9 +132,7 @@ def build_knowledge_graph(docs: list[Document], llm: BaseChatModel, output_path:
                         chunk_nodes.add(nombres[k])
                         chunk_edges.append((nombres[j], nombres[k]))
 
-                # Transacción por chunk: aísla los fallos de modo que un texto problemático no descarte a los demás
-                conn.execute("BEGIN TRANSACTION")
-                transaction_open = True
+                # Transacción por chunk removida para evitar desajustes en el driver Kuzu Python
                 chunk_has_errors = False
                 try:
                     for node_name in chunk_nodes:
@@ -150,28 +154,12 @@ def build_knowledge_graph(docs: list[Document], llm: BaseChatModel, output_path:
                             chunk_has_errors = True
 
                     if chunk_has_errors:
-                        _log.warning(f"Errores en chunk {idx}; ejecutando ROLLBACK para este fragmento.")
-                        conn.execute("ROLLBACK")
-                        transaction_open = False
+                        _log.warning(f"Errores en chunk {idx}; algunos elementos podrían no haberse insertado.")
                     else:
-                        conn.execute("COMMIT")
-                        transaction_open = False
                         processed_indices.add(idx)
                         sm.mark_graph_chunk(idx)
                 except Exception as tx_err:
                     _log.error(f"Excepción en el chunk {idx}: {tx_err}")
-                    if transaction_open:
-                        try:
-                            conn.execute("ROLLBACK")
-                            transaction_open = False
-                        except Exception:
-                            pass
-                finally:
-                    if transaction_open:
-                        try:
-                            conn.execute("ROLLBACK")
-                        except Exception:
-                            pass
 
             # Actualizar progreso DESPUÉS del lote para reflejar conteo real
             print(f"\r    - {len(processed_indices)}/{total_docs} fragmentos completados...", end="", flush=True)

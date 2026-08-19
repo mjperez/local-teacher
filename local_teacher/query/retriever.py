@@ -44,9 +44,12 @@ def stream_consulta(
         llm_fast=llm_fast,
     )
 
+    terminado = False
+
     def _progreso_print(
         paso: int, total: int = 4, mensaje: str = "", saltar_linea: bool = False
     ) -> None:
+        nonlocal terminado
         import shutil
         terminal_width = shutil.get_terminal_size((80, 20)).columns
         porcentaje = int((paso / total) * 100)
@@ -54,8 +57,8 @@ def stream_consulta(
         texto = f"\r[{barra}] {porcentaje:3}% | {mensaje}"
         texto = texto + " " * max(0, terminal_width - len(texto) - 1)
 
-        if saltar_linea and not hasattr(_progreso_print, "terminado"):
-            _progreso_print.terminado = True
+        if saltar_linea and not terminado:
+            terminado = True
             try:
                 print(texto, flush=True)
                 print() # Extra blank line

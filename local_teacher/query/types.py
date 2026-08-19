@@ -1,4 +1,4 @@
-from typing import Protocol, List, Tuple
+from typing import Protocol, List, Tuple, Any
 from langchain_core.documents import Document
 
 class SemanticCacheProtocol(Protocol):
