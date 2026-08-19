@@ -5,7 +5,7 @@ from typing import Iterator, Optional, Any
 from langchain_core.documents import Document
 from langchain_core.language_models.chat_models import BaseChatModel
 
-from local_teacher.query.retriever import SemanticCacheProtocol
+from local_teacher.query.types import SemanticCacheProtocol
 from langchain_core.retrievers import BaseRetriever
 from langchain_community.tools import DuckDuckGoSearchRun
 

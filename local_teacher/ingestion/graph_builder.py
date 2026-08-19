@@ -104,6 +104,11 @@ def build_knowledge_graph(docs: list[Document], llm: BaseChatModel, output_path:
             
 
             
+            # Validar longitud
+            if len(all_entities) != len(batch_texts):
+                _log.error(f"Inconsistencia en inferencia: esperadas {len(batch_texts)} salidas, obtenidas {len(all_entities)}.")
+                continue
+
             for idx, entities, text in zip(batch_indices, all_entities, batch_texts):
                 nombres = set()
                 for e in entities:
@@ -155,6 +160,12 @@ def build_knowledge_graph(docs: list[Document], llm: BaseChatModel, output_path:
                         sm.mark_graph_chunk(idx)
                 except Exception as tx_err:
                     _log.error(f"Excepción en el chunk {idx}: {tx_err}")
+                    if transaction_open:
+                        try:
+                            conn.execute("ROLLBACK")
+                            transaction_open = False
+                        except Exception:
+                            pass
                 finally:
                     if transaction_open:
                         try:

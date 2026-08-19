@@ -4,9 +4,7 @@ from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 
-class SemanticCacheProtocol(Protocol):
-    def similarity_search_with_score(self, query: str, k: int = 1) -> List[Tuple[Document, float]]: ...
-    def add_texts(self, texts: List[str], metadatas: List[dict]) -> None: ...
+from local_teacher.query.types import SemanticCacheProtocol
 
 from local_teacher.query.pipeline import PipelineConsulta
 from local_teacher.query.graph_search import obtener_contexto_grafo

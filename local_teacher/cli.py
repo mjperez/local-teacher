@@ -3,8 +3,10 @@ import sys
 import warnings
 import time
 import shutil
-import glob
 import re
+import argparse
+import logging
+from pathlib import Path
 
 if __name__ == "__main__":
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
@@ -17,10 +19,6 @@ if __name__ == "__main__":
     warnings.filterwarnings("ignore", module="gliner.*")
     warnings.filterwarnings("ignore", module="huggingface_hub.*")
     warnings.filterwarnings("ignore", category=UserWarning)
-
-import argparse  # noqa: E402
-import logging  # noqa: E402
-from pathlib import Path  # noqa: E402
 
 from dotenv import load_dotenv  # noqa: E402
 from langchain_core.messages import AIMessage, HumanMessage  # noqa: E402
@@ -35,6 +33,8 @@ from local_teacher.ingestion.loader import (
 from local_teacher.query.retriever import stream_consulta  # noqa: E402
 from local_teacher.storage.qdrant_store import get_qdrant_retriever  # noqa: E402
 from local_teacher.storage.redis_cache import get_semantic_cache_store  # noqa: E402
+from local_teacher.ingestion.state_manager import get_state_manager  # noqa: E402
+from local_teacher.ingestion.loader import get_cache_path  # noqa: E402
 
 # Permite ejecutar con "python local_teacher/cli.py" directamente
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -73,10 +73,10 @@ def _print_sources(docs):
         fuente_nombre = os.path.basename(fuente)
         pagina = meta.get("pagina", "N/A")
         seccion = meta.get("ruta_seccion", "N/A")
-        
+
         if not pagina or str(pagina).strip() == "":
             pagina = "N/A"
-        
+
         seccion_str = str(seccion).strip()
         if not seccion_str:
             seccion = "N/A"
@@ -142,24 +142,31 @@ class LocalTeacherApp:
                 shutil.rmtree(parent_store)
 
             if self.args.graph:
-                kuzu_path = "./local_teacher_kuzu"
-                for suffix in ["", ".wal", ".tmp", ".lck", ".lock"]:
-                    f = kuzu_path + suffix
-                    if os.path.exists(f):
-                        if os.path.isdir(f):
-                            shutil.rmtree(f)
-                        else:
-                            os.remove(f)
-                print("[*] Base de datos de grafos limpiada por --recreate.")
+                kuzu_dir = Path("./local_teacher_kuzu").resolve()
+                repo_root = Path(__file__).parent.parent.resolve()
+                if not str(kuzu_dir).startswith(str(repo_root)):
+                    print(
+                        "[-] Error de seguridad: kuzu_path está fuera del directorio del proyecto."
+                    )
+                else:
+                    for suffix in ["", ".wal", ".tmp", ".lck", ".lock"]:
+                        f = Path(str(kuzu_dir) + suffix)
+                        if f.exists() and not f.is_symlink():
+                            if f.is_dir():
+                                shutil.rmtree(f)
+                            else:
+                                f.unlink()
+                    print("[*] Base de datos de grafos limpiada por --recreate.")
 
             try:
-                from local_teacher.storage.redis_cache import get_semantic_cache_store
 
                 cache_store = get_semantic_cache_store(self.embeddings)
                 if cache_store.clear():
                     print("[*] Caché semántico (Redis) limpiado por --recreate.")
                 else:
-                    print("[-] Limpieza de caché semántico omitida o bloqueada por guardrails.")
+                    print(
+                        "[-] Limpieza de caché semántico omitida o bloqueada por guardrails."
+                    )
             except Exception as e:
                 print(f"[-] Error al limpiar caché semántico: {e}")
 
@@ -175,8 +182,6 @@ class LocalTeacherApp:
                 print(f"[-] Error al limpiar StateManager: {e}")
 
             try:
-                from local_teacher.ingestion.loader import get_cache_path
-
                 cache_file = get_cache_path(Path(self.args.ingest))
                 if cache_file.exists():
                     cache_file.unlink()
@@ -191,9 +196,13 @@ class LocalTeacherApp:
                 if legacy_path.exists():
                     try:
                         legacy_path.unlink()
-                        print(f"[*] Archivo de checkpoint legacy '{legacy_file}' eliminado.")
+                        print(
+                            f"[*] Archivo de checkpoint legacy '{legacy_file}' eliminado."
+                        )
                     except Exception as e:
-                        print(f"[-] Error al eliminar checkpoint legacy '{legacy_file}': {e}")
+                        print(
+                            f"[-] Error al eliminar checkpoint legacy '{legacy_file}': {e}"
+                        )
 
         print(
             "[*] (Si es la primera vez que se procesa un PDF, Docling podría descargar modelos y tardar varios minutos...)"
@@ -229,8 +238,6 @@ class LocalTeacherApp:
                 )
                 t_total = time.time() - t0_ingest
 
-                from local_teacher.ingestion.state_manager import get_state_manager
-
                 sm = get_state_manager()
                 tiempo_historico = sm.get_cumulative_time()
                 t_real = t_total + tiempo_historico
@@ -243,8 +250,6 @@ class LocalTeacherApp:
         except KeyboardInterrupt:
             t_parcial = time.time() - t0_ingest
             try:
-                from local_teacher.ingestion.state_manager import get_state_manager
-
                 sm = get_state_manager()
                 sm.add_cumulative_time(t_parcial)
                 print("\n\n[!] Ingesta interrumpida por el usuario.")
@@ -258,7 +263,11 @@ class LocalTeacherApp:
     def run_chat(self):
         print("[*] Conectando a Qdrant...")
         self.retriever = self.retriever or get_qdrant_retriever(self.embeddings)
-        self.cache_store = get_semantic_cache_store(self.embeddings) if not getattr(self.args, 'no_cache', False) else None
+        self.cache_store = (
+            get_semantic_cache_store(self.embeddings)
+            if not getattr(self.args, "no_cache", False)
+            else None
+        )
 
         consulta_actual = self.args.query
         while True:

@@ -67,12 +67,11 @@ class RedisCacheStore:
         # Guardrail de seguridad: requerir confirmación explícita para evitar pérdida
         # accidental de datos en instancias de Redis compartidas.
         if os.getenv("REDIS_ALLOW_DROP", "false").lower() != "true":
-            _log.error(
-                "[!] Operación de borrado de caché semántica denegada.\n"
-                "    La eliminación de índices en Redis está bloqueada por seguridad.\n"
-                "    Configura 'REDIS_ALLOW_DROP=true' en tu entorno si estás seguro de que\n"
-                "    el servidor Redis es de uso exclusivo para esta aplicación."
-            )
+            _log.warning("Intento de borrado de caché bloqueado por seguridad. Configura REDIS_ALLOW_DROP=true para permitirlo.")
+            return False
+
+        if os.getenv("REDIS_DEDICATED_INSTANCE", "false").lower() != "true":
+            _log.warning("Intento de borrado bloqueado: se requiere REDIS_DEDICATED_INSTANCE=true para confirmar que el servidor es exclusivo de la app.")
             return False
 
         # Guardrail adicional: solo borrar índices que pertenezcan a esta app.

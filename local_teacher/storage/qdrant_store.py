@@ -9,6 +9,7 @@ from langchain_classic.storage import LocalFileStore, EncoderBackedStore
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import json
 import logging
+import os
 
 _log = logging.getLogger(__name__)
 

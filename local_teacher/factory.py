@@ -28,7 +28,7 @@ def obtener_modelos(
             host = "http://127.0.0.1:11434"
         
             
-        _log.info(f"[*] Conectando a Ollama en {host} (LLM: {ollama_llm}, Embed: {ollama_embed})")
+        print(f"[*] Conectando a Ollama en {host} (LLM: {ollama_llm}, Embed: {ollama_embed})")
         _keep_alive = int(os.getenv("OLLAMA_KEEP_ALIVE", "300"))
         _embed_keep_alive = int(os.getenv("OLLAMA_EMBED_KEEP_ALIVE", "0"))
         return (
