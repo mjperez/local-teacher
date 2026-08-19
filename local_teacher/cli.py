@@ -171,11 +171,25 @@ class LocalTeacherApp:
             except Exception as e:
                 print(f"[-] Error al limpiar caché de documentos locales: {e}")
 
+            # Compatibilidad hacia atrás: limpiar checkpoints del formato anterior
+            # si aún existen en el directorio de trabajo.
+            for legacy_file in [".graph_checkpoint.json", ".loader_checkpoint.json"]:
+                legacy_path = Path(legacy_file)
+                if legacy_path.exists():
+                    try:
+                        legacy_path.unlink()
+                        print(f"[*] Archivo de checkpoint legacy '{legacy_file}' eliminado.")
+                    except Exception as e:
+                        print(f"[-] Error al eliminar checkpoint legacy '{legacy_file}': {e}")
+
         print(
             "[*] (Si es la primera vez que se procesa un PDF, Docling podría descargar modelos y tardar varios minutos...)"
         )
 
         try:
+            # Exponer el número de workers via env var para que document.py pueda
+            # escalar num_threads de Docling y evitar sobresuscripción de CPU.
+            os.environ["INGEST_WORKERS"] = str(self.args.workers)
             docs = cargar_archivos(
                 self.args.ingest,
                 extraer_figuras=self.args.figures,

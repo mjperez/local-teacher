@@ -97,9 +97,7 @@ def build_knowledge_graph(docs: list[Document], llm: BaseChatModel, output_path:
         
         if not batch_texts:
             continue
-        
-        print(f"\r    - {len(processed_indices)}/{total_docs} fragmentos completados...", end="", flush=True)
-        
+
         try:
             # Predicción en batch: una sola pasada por el modelo para N textos
             all_entities = model.inference(batch_texts, labels, threshold=0.5)
@@ -123,33 +121,57 @@ def build_knowledge_graph(docs: list[Document], llm: BaseChatModel, output_path:
                         all_nodes.add(nombres[k])
                         all_edges.append((nombres[j], nombres[k]))
             
-            # Insertar nodos en bulk
+            # Insertar nodos y aristas en una sola transacción.
+            # Si cualquier inserción falla, se hace ROLLBACK para evitar escribir
+            # un lote parcialmente inconsistente en el grafo.
             conn.execute("BEGIN TRANSACTION")
-            for node_name in all_nodes:
-                try:
-                    conn.execute("MERGE (a:Entity {name: $name})", parameters={"name": node_name})
-                except Exception as e:
-                    _log.error(f"KùzuDB Error en nodo: {e}")
-            
-            # Insertar aristas en bulk
-            for origen, destino in all_edges:
-                try:
-                    conn.execute(
-                        "MATCH (a:Entity {name: $o}), (b:Entity {name: $d}) MERGE (a)-[r:Rel {type: $rel}]->(b)", 
-                        parameters={"o": origen, "d": destino, "rel": "CO_OCCURS_WITH"}
+            batch_has_errors = False
+            try:
+                for node_name in all_nodes:
+                    try:
+                        conn.execute("MERGE (a:Entity {name: $name})", parameters={"name": node_name})
+                    except Exception as e:
+                        _log.error(f"KùzuDB Error en nodo: {e}")
+                        batch_has_errors = True
+                
+                # Insertar aristas en bulk
+                for origen, destino in all_edges:
+                    try:
+                        conn.execute(
+                            "MATCH (a:Entity {name: $o}), (b:Entity {name: $d}) MERGE (a)-[r:Rel {type: $rel}]->(b)", 
+                            parameters={"o": origen, "d": destino, "rel": "CO_OCCURS_WITH"}
+                        )
+                        aristas_creadas += 1
+                    except Exception as e:
+                        _log.error(f"KùzuDB Error en arista: {e}")
+                        batch_has_errors = True
+
+                if batch_has_errors:
+                    _log.warning(
+                        f"Lote {batch_start}-{batch_end} tuvo errores de inserción; ejecutando ROLLBACK."
                     )
-                    aristas_creadas += 1
-                except Exception as e:
-                    _log.error(f"KùzuDB Error en arista: {e}")
-            conn.execute("COMMIT")
+                    conn.execute("ROLLBACK")
+                else:
+                    conn.execute("COMMIT")
+            except Exception as tx_err:
+                _log.error(f"Fallo en transacción KùzuDB, ejecutando ROLLBACK: {tx_err}")
+                try:
+                    conn.execute("ROLLBACK")
+                except Exception:
+                    pass
+                raise
             
             # Marcar todos los fragmentos del lote como procesados
             for idx in batch_indices:
                 processed_indices.add(idx)
                 sm.mark_graph_chunk(idx)
+
+            # Actualizar progreso DESPUÉS de confirmar el lote para reflejar conteo real
+            print(f"\r    - {len(processed_indices)}/{total_docs} fragmentos completados...", end="", flush=True)
                 
         except Exception as e:
             _log.error(f"Error procesando lote {batch_start}-{batch_end}: {e}")
+
             
     print(f"\n[+] Grafo construido con {aristas_creadas} nuevas aristas de co-ocurrencia.")
     _log.info(f"Grafo construido en disco con {aristas_creadas} nuevas aristas.")

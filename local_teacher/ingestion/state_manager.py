@@ -169,7 +169,11 @@ class StateManager:
         """Reinicia el tiempo acumulado (al finalizar exitosamente)."""
         try:
             with self._obtener_conexion() as conn:
-                conn.execute("UPDATE meta_data SET value=0.0 WHERE key='cumulative_time'")
+                # Upsert: garantiza que la fila exista aunque haya sido borrada por clear().
+                conn.execute("""
+                    INSERT INTO meta_data (key, value) VALUES ('cumulative_time', 0.0)
+                    ON CONFLICT(key) DO UPDATE SET value=0.0
+                """)
                 conn.commit()
         except Exception as e:
             _log.warning("Error al resetear tiempo acumulado: %s", e)
@@ -177,9 +181,31 @@ class StateManager:
 
 _global_state_manager = None
 
-def get_state_manager(db_path: Path | str | None = None) -> StateManager:
-    """Devuelve la instancia global del gestor de estado. Si db_path se provee, recrea la instancia (útil para tests)."""
+
+def get_state_manager() -> StateManager:
+    """Devuelve la instancia global (singleton) del gestor de estado de producción."""
     global _global_state_manager
-    if _global_state_manager is None or db_path is not None:
-        _global_state_manager = StateManager(db_path=db_path)
+    if _global_state_manager is None:
+        _global_state_manager = StateManager()
     return _global_state_manager
+
+
+def create_state_manager(db_path: Path | str) -> StateManager:
+    """Crea una instancia AISLADA del gestor de estado.
+
+    Usar exclusivamente en tests y benchmarks para evitar mutar el singleton
+    global de producción.
+    """
+    return StateManager(db_path=db_path)
+
+
+def override_state_manager(instance: StateManager) -> None:
+    """Reemplaza el singleton global con una instancia específica.
+
+    Usar en tests/benchmarks ANTES de llamar a cualquier módulo de ingesta
+    para garantizar que todos usen la BD de checkpoints aislada.
+    Llamar a `get_state_manager()` sin argumentos restaura el comportamiento
+    normal al siguiente ciclo si la instancia se pone a None externamente.
+    """
+    global _global_state_manager
+    _global_state_manager = instance

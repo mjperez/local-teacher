@@ -10,7 +10,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from local_teacher.factory import obtener_modelos, obtener_llm_critico
-from local_teacher.ingestion.state_manager import get_state_manager
+from local_teacher.ingestion.state_manager import create_state_manager, override_state_manager
 from local_teacher.ingestion.loader import cargar_archivos
 from local_teacher.ingestion.chunker import dividir_texto
 from local_teacher.ingestion.graph_builder import build_knowledge_graph
@@ -46,8 +46,11 @@ def ejecutar_prueba_completa(reingestar: bool = False):
     t_modelos = time.time() - t0_modelos
     print(f"[+] Modelos inicializados en {t_modelos:.2f}s (LLM: llama3.2, Embeddings: granite-embedding, Critico: granite3-guardian)")
 
-    # 1.5. Aislar State Manager
-    get_state_manager(db_path=BENCHMARK_CHECKPOINT_DB)
+    # 1.5. Aislar State Manager: crear instancia aislada e inyectarla como singleton
+    # para que todos los módulos de ingesta escriban en la BD del benchmark y no en
+    # la de producción.
+    _benchmark_sm = create_state_manager(db_path=BENCHMARK_CHECKPOINT_DB)
+    override_state_manager(_benchmark_sm)
 
     # 2. INGESTA Y RENDIMIENTO
     print("\n" + "-" * 80)

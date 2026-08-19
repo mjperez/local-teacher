@@ -61,8 +61,22 @@ class RedisCacheStore:
     def clear(self) -> None:
         if not self.connected:
             return
+        # Guardrail: solo borrar índices que pertenezcan a esta app para evitar
+        # destruir datos de otros servicios que compartan el mismo servidor Redis.
+        if not self.index_name.startswith("local_teacher_"):
+            _log.error(
+                "[!] Abortando clear(): el index_name '%s' no tiene el prefijo 'local_teacher_'. "
+                "Verifica la configuración antes de continuar.",
+                self.index_name,
+            )
+            return
         try:
             from langchain_community.vectorstores import Redis
+            _log.warning(
+                "[!] Eliminando índice Redis '%s' en %s. Esta operación es irreversible.",
+                self.index_name,
+                self.redis_url,
+            )
             Redis.drop_index(index_name=self.index_name, delete_documents=True, redis_url=self.redis_url)
             _log.info("[*] Índice de Caché Semántico (Redis) eliminado correctamente.")
         except Exception as e:

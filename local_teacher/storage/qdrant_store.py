@@ -8,6 +8,9 @@ from langchain_classic.retrievers import ParentDocumentRetriever
 from langchain_classic.storage import LocalFileStore, EncoderBackedStore
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import json
+import logging
+
+_log = logging.getLogger(__name__)
 
 def _doc_serializer(doc: Document) -> bytes:
     data = {"page_content": doc.page_content, "metadata": doc.metadata}
@@ -84,7 +87,11 @@ def get_qdrant_retriever(
                 print(f"[*] Checkpoint encontrado: {len(processed_batches)} lotes ya ingestados en Qdrant. Reanudando...")
 
         print(f"[*] Ingestando {len(documentos)} documentos jerárquicos en lotes...")
-        batch_size = 100
+        try:
+            batch_size = max(1, int(os.getenv("QDRANT_BATCH_SIZE", "100")))
+        except (ValueError, TypeError):
+            _log.warning("QDRANT_BATCH_SIZE tiene un valor inválido; usando 100 por defecto.")
+            batch_size = 100
         total_lotes = (len(documentos) + batch_size - 1) // batch_size
         saltados = len(processed_batches)
         if saltados:

@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import re
 import concurrent.futures
 from typing import List, Optional
@@ -170,7 +171,12 @@ def reescribir_consulta(
 
         future = _optimizer_executor.submit(_invocar)
         try:
-            return future.result(timeout=20)
+            try:
+                _timeout = max(5, min(300, int(os.getenv("OPTIMIZER_TIMEOUT_SECS", "20"))))
+            except (ValueError, TypeError):
+                _log.warning("OPTIMIZER_TIMEOUT_SECS tiene un valor inválido; usando 20s por defecto.")
+                _timeout = 20
+            return future.result(timeout=_timeout)
         except concurrent.futures.TimeoutError:
             _log.warning("Tiempo de espera agotado al optimizar consulta. Usando consulta original.")
             return ConsultaEstructurada(consulta=consulta, capitulo=None, entidades=[])

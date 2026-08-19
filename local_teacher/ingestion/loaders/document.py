@@ -65,7 +65,14 @@ def _get_docling_converter(enriquecer_formulas: bool, extraer_tablas: bool):
         opts.do_formula_enrichment = enriquecer_formulas
         opts.layout_options.engine_options.compile_model = False
 
-        hilos_cpu = max(1, os.cpu_count() or 1)
+        # Escalar hilos por número de workers para evitar sobresuscripción.
+        # Con --workers N, el total de hilos de Docling sería N × num_threads.
+        # Dividimos cpu_count entre los workers activos y limitamos a [1, 4].
+        try:
+            workers = max(1, int(os.getenv("INGEST_WORKERS", "1")))
+        except (ValueError, TypeError):
+            workers = 1
+        hilos_cpu = max(1, min(4, (os.cpu_count() or 1) // workers))
         opts.accelerator_options = AcceleratorOptions(
             num_threads=hilos_cpu, device=AcceleratorDevice.AUTO
         )
