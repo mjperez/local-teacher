@@ -11,7 +11,7 @@ LOCAL_EMBEDDING_URL = "http://localhost:11434/v1"
 LOCAL_EMBEDDING_MODEL = "openai:nomic-embed-text"
 
 REQUIREMENTS_PATH = "requirements.txt"
-MANIFEST_PATH = "indexed_packages.json"
+MANIFEST_PATH = "scripts/indexed_packages.json"
 
 # Skip boilerplate packages without standalone docs
 IGNORED_PACKAGES = {
@@ -96,7 +96,7 @@ def main():
     local_env["OPENAI_API_BASE"] = LOCAL_EMBEDDING_URL
     local_env["DOCS_MCP_EMBEDDING_MODEL"] = LOCAL_EMBEDDING_MODEL
 
-    ssl_context = ssl._create_unverified_context()
+    ssl_context = ssl.create_default_context()
 
     # 2. Get list of packages from requirements.txt
     packages = parse_requirements(REQUIREMENTS_PATH)
@@ -169,7 +169,9 @@ def main():
             cmd.extend(["--version", version])
 
         try:
-            result = subprocess.run(cmd, shell=True, env=local_env, check=False)
+            if os.name == 'nt' and cmd[0] == 'npx':
+                cmd[0] = 'npx.cmd'
+            result = subprocess.run(cmd, shell=False, env=local_env, check=False)
         except Exception as err:
             print(f"Error scraping {name}: {err}")
             continue

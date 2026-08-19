@@ -57,8 +57,7 @@ def stream_consulta(
         texto = f"\r[{barra}] {porcentaje:3}% | {mensaje}"
         texto = texto + " " * max(0, terminal_width - len(texto) - 1)
 
-        if saltar_linea and not terminado:
-            terminado = True
+        if saltar_linea:
             try:
                 print(texto, flush=True)
                 print() # Extra blank line

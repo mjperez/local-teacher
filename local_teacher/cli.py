@@ -6,7 +6,7 @@ import shutil
 import re
 import argparse
 import logging
-from typing import Protocol, List, Tuple
+
 from pathlib import Path
 
 if __name__ == "__main__":
@@ -151,6 +151,7 @@ class LocalTeacherApp:
                     print(
                         "[-] Error de seguridad: kuzu_path está fuera del directorio del proyecto."
                     )
+                    sys.exit(1)
                 else:
                     for suffix in ["", ".wal", ".tmp", ".lck", ".lock"]:
                         f = Path(str(kuzu_dir) + suffix)

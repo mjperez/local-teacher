@@ -154,10 +154,10 @@ def build_knowledge_graph(docs: list[Document], llm: BaseChatModel, output_path:
                             chunk_has_errors = True
 
                     if chunk_has_errors:
-                        _log.warning(f"Errores en chunk {idx}; algunos elementos podrían no haberse insertado.")
-                    else:
-                        processed_indices.add(idx)
-                        sm.mark_graph_chunk(idx)
+                        _log.warning(f"Errores menores en chunk {idx}; algunos elementos podrían no haberse insertado. Continuando.")
+                    
+                    processed_indices.add(idx)
+                    sm.mark_graph_chunk(idx)
                 except Exception as tx_err:
                     _log.error(f"Excepción en el chunk {idx}: {tx_err}")
 

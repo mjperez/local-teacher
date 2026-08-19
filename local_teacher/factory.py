@@ -28,7 +28,7 @@ def obtener_modelos(
             host = "http://127.0.0.1:11434"
         
             
-        print(f"[*] Conectando a Ollama en {host} (LLM: {ollama_llm}, Embed: {ollama_embed})")
+        _log.info(f"[*] Conectando a Ollama en {host} (LLM: {ollama_llm}, Embed: {ollama_embed})")
         _keep_alive = int(os.getenv("OLLAMA_KEEP_ALIVE", "300"))
         _embed_keep_alive = int(os.getenv("OLLAMA_EMBED_KEEP_ALIVE", "0"))
         return (
@@ -60,7 +60,7 @@ def obtener_llm_critico(
         if host == "http://0.0.0.0" or host == "0.0.0.0":
             host = "http://127.0.0.1:11434"
             
-        _log.debug(f"[*] Conectando a Ollama Crítico en {host} (LLM: {ollama_critic_llm})")
+        _log.info(f"[*] Conectando a Ollama Crítico en {host} (LLM: {ollama_critic_llm})")
         _keep_alive = int(os.getenv("OLLAMA_KEEP_ALIVE", "300"))
         return ChatOllama(model=ollama_critic_llm, temperature=0, base_url=host, num_ctx=num_ctx, keep_alive=_keep_alive)
         
