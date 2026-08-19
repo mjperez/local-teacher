@@ -209,7 +209,8 @@ def _ejecutar_prueba_completa_internal(reingestar: bool = False):
         },
         "consultas": metricas_consultas,
     }
-    json_path = os.path.join(OUTPUTS_DIR, "benchmark_resultados.json")
+    timestamp_str = time.strftime("%Y%m%d_%H%M%S")
+    json_path = os.path.join(OUTPUTS_DIR, f"benchmark_resultados_{timestamp_str}.json")
     with open(json_path, "w", encoding="utf-8") as f:
         json.dump(reporte, f, ensure_ascii=False, indent=2)
 
