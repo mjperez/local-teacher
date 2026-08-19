@@ -9,6 +9,8 @@ import logging
 
 from pathlib import Path
 
+# Permite ejecutar con "python local_teacher/cli.py" directamente
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 if __name__ == "__main__":
     os.environ["TOKENIZERS_PARALLELISM"] = "false"
     os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
@@ -37,8 +39,6 @@ from local_teacher.storage.redis_cache import get_semantic_cache_store  # noqa: 
 from local_teacher.ingestion.state_manager import get_state_manager  # noqa: E402
 from local_teacher.ingestion.loader import get_cache_path  # noqa: E402
 
-# Permite ejecutar con "python local_teacher/cli.py" directamente
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -248,6 +248,9 @@ class LocalTeacherApp:
                     f"[+] Ingesta completada ({len(chunks)} fragmentos) en {t_real:.2f} segundos (Sesión actual: {t_total:.2f}s)."
                 )
                 sm.reset_cumulative_time()
+            else:
+                print("[-] No se encontraron o extrajeron documentos. Inicializando el recuperador con la base de datos existente.")
+                self.retriever = get_qdrant_retriever(self.embeddings, force_recreate=False)
 
         except KeyboardInterrupt:
             t_parcial = time.time() - t0_ingest

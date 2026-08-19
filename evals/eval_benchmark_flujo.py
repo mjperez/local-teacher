@@ -112,7 +112,7 @@ def _ejecutar_prueba_completa_internal(reingestar: bool = False):
     print("FASE 2: RENDIMIENTO, VELOCIDAD Y EFICACIA DE CONSULTAS (LLM)")
     print("-" * 80)
 
-    cache_store = get_semantic_cache_store(embeddings, index_name="local_teacher_benchmark_cache")
+    cache_store = get_semantic_cache_store(embeddings, index_name=f"local_teacher_benchmark_cache_{int(time.time())}")
 
     casos_de_prueba = [
         {

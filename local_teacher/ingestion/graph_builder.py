@@ -135,14 +135,18 @@ def build_knowledge_graph(docs: list[Document], llm: BaseChatModel, output_path:
                 # Transacción por chunk removida para evitar desajustes en el driver Kuzu Python
                 chunk_has_errors = False
                 try:
+                    successful_nodes = set()
                     for node_name in chunk_nodes:
                         try:
                             conn.execute("MERGE (a:Entity {name: $name})", parameters={"name": node_name})
+                            successful_nodes.add(node_name)
                         except Exception as e:
                             _log.error(f"KùzuDB Error en nodo '{node_name}': {e}")
                             chunk_has_errors = True
                     
                     for origen, destino in chunk_edges:
+                        if origen not in successful_nodes or destino not in successful_nodes:
+                            continue
                         try:
                             conn.execute(
                                 "MATCH (a:Entity {name: $o}), (b:Entity {name: $d}) MERGE (a)-[r:Rel {type: $rel}]->(b)", 
@@ -154,10 +158,10 @@ def build_knowledge_graph(docs: list[Document], llm: BaseChatModel, output_path:
                             chunk_has_errors = True
 
                     if chunk_has_errors:
-                        _log.warning(f"Errores menores en chunk {idx}; algunos elementos podrían no haberse insertado. Continuando.")
-                    
-                    processed_indices.add(idx)
-                    sm.mark_graph_chunk(idx)
+                        _log.warning(f"Errores en chunk {idx}; algunos elementos podrían no haberse insertado. No se marcará como procesado.")
+                    else:
+                        processed_indices.add(idx)
+                        sm.mark_graph_chunk(idx)
                 except Exception as tx_err:
                     _log.error(f"Excepción en el chunk {idx}: {tx_err}")
 

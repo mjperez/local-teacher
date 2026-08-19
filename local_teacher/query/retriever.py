@@ -44,12 +44,11 @@ def stream_consulta(
         llm_fast=llm_fast,
     )
 
-    terminado = False
 
     def _progreso_print(
         paso: int, total: int = 4, mensaje: str = "", saltar_linea: bool = False
     ) -> None:
-        nonlocal terminado
+
         import shutil
         terminal_width = shutil.get_terminal_size((80, 20)).columns
         porcentaje = int((paso / total) * 100)
