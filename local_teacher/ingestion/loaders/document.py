@@ -65,8 +65,9 @@ def _get_docling_converter(enriquecer_formulas: bool, extraer_tablas: bool):
         opts.do_formula_enrichment = enriquecer_formulas
         opts.layout_options.engine_options.compile_model = False
 
+        hilos_cpu = max(1, os.cpu_count() or 1)
         opts.accelerator_options = AcceleratorOptions(
-            num_threads=1, device=AcceleratorDevice.AUTO
+            num_threads=hilos_cpu, device=AcceleratorDevice.AUTO
         )
 
         _docling_converters[key] = DocumentConverter(

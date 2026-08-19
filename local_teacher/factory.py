@@ -7,6 +7,7 @@ def obtener_modelos(
     ollama_llm: str = "deepseek-r1:8b",
     ollama_embed: str = "granite-embedding:278m",
     ollama_host: str | None = None,
+    num_ctx: int = 16384,
 ) -> tuple[BaseChatModel, Embeddings]:
     """Inicializa y devuelve el LLM y el modelo de embeddings."""
     provider = provider.lower()
@@ -24,10 +25,10 @@ def obtener_modelos(
             host = "http://127.0.0.1:11434"
         
             
-        print(f"[*] Conectando a Ollama en: {host}")
+        print(f"[*] Conectando a Ollama en {host} (LLM: {ollama_llm}, Embed: {ollama_embed})")
         return (
-            ChatOllama(model=ollama_llm, temperature=0, base_url=host, num_ctx=16384, keep_alive=300),
-            OllamaEmbeddings(model=ollama_embed, base_url=host, keep_alive=0),
+            ChatOllama(model=ollama_llm, temperature=0, base_url=host, num_ctx=num_ctx, keep_alive=300),
+            OllamaEmbeddings(model=ollama_embed, base_url=host, keep_alive=300),
         )
         
     raise ValueError(f"[-] Proveedor no soportado: {provider}")
@@ -37,6 +38,7 @@ def obtener_llm_critico(
     provider: str,
     ollama_critic_llm: str = "granite3-guardian:2b",
     ollama_host: str | None = None,
+    num_ctx: int = 8192,
 ) -> BaseChatModel:
     """Inicializa y devuelve el LLM específico para el supervisor (Critic)."""
     provider = provider.lower()
@@ -53,6 +55,7 @@ def obtener_llm_critico(
         if host == "http://0.0.0.0" or host == "0.0.0.0":
             host = "http://127.0.0.1:11434"
             
-        return ChatOllama(model=ollama_critic_llm, temperature=0, base_url=host, num_ctx=8192, keep_alive=0)
+        print(f"[*] Conectando a Ollama Crítico en {host} (LLM: {ollama_critic_llm})")
+        return ChatOllama(model=ollama_critic_llm, temperature=0, base_url=host, num_ctx=num_ctx, keep_alive=300)
         
     raise ValueError(f"[-] Proveedor no soportado: {provider}")

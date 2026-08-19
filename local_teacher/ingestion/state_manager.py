@@ -46,6 +46,12 @@ class StateManager:
                         chunk_index INTEGER PRIMARY KEY
                     )
                 """)
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS meta_data (
+                        key TEXT PRIMARY KEY,
+                        value REAL
+                    )
+                """)
                 conn.commit()
         except Exception as e:
             _log.error("Error al inicializar la base de datos de checkpoints SQLite: %s", e)
@@ -129,14 +135,51 @@ class StateManager:
                 conn.execute("DELETE FROM processed_files")
                 conn.execute("DELETE FROM qdrant_batches")
                 conn.execute("DELETE FROM graph_chunks")
+                conn.execute("DELETE FROM meta_data WHERE key='cumulative_time'")
                 conn.commit()
         except Exception as e:
             _log.warning("Error al limpiar checkpoints: %s", e)
 
+    # Tiempo Acumulado
+    def get_cumulative_time(self) -> float:
+        """Obtiene el tiempo parcial acumulado de sesiones anteriores."""
+        try:
+            with self._obtener_conexion() as conn:
+                cursor = conn.cursor()
+                cursor.execute("SELECT value FROM meta_data WHERE key='cumulative_time'")
+                row = cursor.fetchone()
+                return row[0] if row else 0.0
+        except Exception as e:
+            _log.warning("No se pudo leer el tiempo acumulado: %s", e)
+            return 0.0
 
-_global_state_manager = StateManager()
+    def add_cumulative_time(self, seconds: float) -> None:
+        """Suma tiempo al contador acumulado (para cuando se presiona Ctrl+C)."""
+        try:
+            with self._obtener_conexion() as conn:
+                conn.execute("""
+                    INSERT INTO meta_data (key, value) VALUES ('cumulative_time', ?)
+                    ON CONFLICT(key) DO UPDATE SET value=value+?
+                """, (seconds, seconds))
+                conn.commit()
+        except Exception as e:
+            _log.warning("Error al guardar tiempo acumulado: %s", e)
+
+    def reset_cumulative_time(self) -> None:
+        """Reinicia el tiempo acumulado (al finalizar exitosamente)."""
+        try:
+            with self._obtener_conexion() as conn:
+                conn.execute("UPDATE meta_data SET value=0.0 WHERE key='cumulative_time'")
+                conn.commit()
+        except Exception as e:
+            _log.warning("Error al resetear tiempo acumulado: %s", e)
 
 
-def get_state_manager() -> StateManager:
-    """Devuelve la instancia global del gestor de estado."""
+_global_state_manager = None
+
+def get_state_manager(db_path: Path | str | None = None) -> StateManager:
+    """Devuelve la instancia global del gestor de estado. Si db_path se provee, recrea la instancia (útil para tests)."""
+    global _global_state_manager
+    if _global_state_manager is None or db_path is not None:
+        _global_state_manager = StateManager(db_path=db_path)
     return _global_state_manager

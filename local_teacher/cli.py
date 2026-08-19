@@ -24,12 +24,13 @@ from langchain_core.messages import AIMessage, HumanMessage  # noqa: E402
 from local_teacher.factory import obtener_llm_critico, obtener_modelos  # noqa: E402
 from local_teacher.ingestion.chunker import dividir_texto  # noqa: E402
 from local_teacher.ingestion.graph_builder import build_knowledge_graph  # noqa: E402
-from local_teacher.ingestion.loader import cargar_archivos, guardar_cache_jsonl  # noqa: E402
+from local_teacher.ingestion.loader import (
+    cargar_archivos,
+    guardar_cache_jsonl,
+)  # noqa: E402
 from local_teacher.query.retriever import stream_consulta  # noqa: E402
 from local_teacher.storage.qdrant_store import get_qdrant_retriever  # noqa: E402
 from local_teacher.storage.redis_cache import get_semantic_cache_store  # noqa: E402
-
-
 
 # Permite ejecutar con "python local_teacher/cli.py" directamente
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -103,11 +104,23 @@ class LocalTeacherApp:
             ollama_critic_llm=args.ollama_critic_llm,
             ollama_host=args.ollama_host,
         )
+        self.llm_fast = None
+        if args.mode == "exact":
+            self.llm_fast, _ = obtener_modelos(
+                args.provider,
+                ollama_llm="llama3.2",
+                ollama_embed=args.ollama_embed,
+                ollama_host=args.ollama_host,
+                num_ctx=4096,
+            )
         self.retriever = None
         self.cache_store = None
         self.chat_history = []
 
     def ingest(self):
+        import time
+
+        t0_ingest = time.time()
         print(f"[*] Iniciando carga de documentos desde: {self.args.ingest}")
 
         if self.args.recreate:
@@ -127,55 +140,91 @@ class LocalTeacherApp:
                         os.remove(kuzu_path)
                 if os.path.exists(kuzu_path + ".wal"):
                     os.remove(kuzu_path + ".wal")
-                if os.path.exists("./.graph_checkpoint.json"):
-                    os.remove("./.graph_checkpoint.json")
                 print("[*] Base de datos de grafos limpiada por --recreate.")
 
             try:
-                import redis
+                from local_teacher.storage.redis_cache import get_semantic_cache_store
 
-                r = redis.Redis(
-                    host=os.getenv("REDIS_HOST", "localhost"),
-                    port=int(os.getenv("REDIS_PORT", "6379")),
+                cache_store = get_semantic_cache_store(self.embeddings)
+                cache_store.clear()
+            except Exception as e:
+                print(f"[-] Error al limpiar caché semántico: {e}")
+
+            try:
+                from local_teacher.ingestion.state_manager import get_state_manager
+
+                sm = get_state_manager()
+                sm.clear()
+                print(
+                    "[*] Base de datos de estado (checkpoints) limpiada por --recreate."
                 )
-                r.flushdb()
-                print("[*] Caché semántico (Redis) limpiado por --recreate.")
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"[-] Error al limpiar StateManager: {e}")
 
-            if os.path.exists("./.loader_checkpoint.json"):
-                os.remove("./.loader_checkpoint.json")
-            cache_file = Path(self.args.ingest).with_suffix(".jsonl")
-            if cache_file.exists():
-                cache_file.unlink()
-            print("[*] Caché de documentos locales limpiado por --recreate.")
+            try:
+                from local_teacher.ingestion.loader import _get_cache_path
+
+                cache_file = _get_cache_path(Path(self.args.ingest))
+                if cache_file.exists():
+                    cache_file.unlink()
+                print("[*] Caché de documentos locales limpiado por --recreate.")
+            except Exception as e:
+                print(f"[-] Error al limpiar caché de documentos locales: {e}")
 
         print(
             "[*] (Si es la primera vez que se procesa un PDF, Docling podría descargar modelos y tardar varios minutos...)"
         )
-        docs = cargar_archivos(
-            self.args.ingest,
-            extraer_figuras=self.args.figures,
-            extraer_tablas=self.args.tables,
-            enriquecer_formulas=self.args.with_formulas,
-            max_workers=self.args.workers,
-        )
-        if docs:
-            guardar_cache_jsonl(docs, self.args.ingest)
 
-            print("[*] Dividiendo texto en fragmentos (chunking)...")
-            chunks = dividir_texto(docs)
-
-            if self.args.graph:
-                build_knowledge_graph(chunks, self.llm)
-
-            print(
-                "[*] Generando embeddings y guardando en Qdrant (esto puede tomar un tiempo)..."
+        try:
+            docs = cargar_archivos(
+                self.args.ingest,
+                extraer_figuras=self.args.figures,
+                extraer_tablas=self.args.tables,
+                enriquecer_formulas=self.args.with_formulas,
+                max_workers=self.args.workers,
             )
-            self.retriever = get_qdrant_retriever(
-                self.embeddings, chunks, force_recreate=self.args.recreate
-            )
-            print(f"[+] Ingesta completada ({len(chunks)} fragmentos).")
+            if docs:
+                guardar_cache_jsonl(docs, self.args.ingest)
+
+                print("[*] Dividiendo texto en fragmentos (chunking)...")
+                chunks = dividir_texto(docs)
+
+                if self.args.graph:
+                    build_knowledge_graph(chunks, self.llm)
+
+                print(
+                    "[*] Generando embeddings y guardando en Qdrant (esto puede tomar un tiempo)..."
+                )
+                self.retriever = get_qdrant_retriever(
+                    self.embeddings, chunks, force_recreate=self.args.recreate
+                )
+                t_total = time.time() - t0_ingest
+
+                from local_teacher.ingestion.state_manager import get_state_manager
+
+                sm = get_state_manager()
+                tiempo_historico = sm.get_cumulative_time()
+                t_real = t_total + tiempo_historico
+
+                print(
+                    f"[+] Ingesta completada ({len(chunks)} fragmentos) en {t_real:.2f} segundos (Sesión actual: {t_total:.2f}s)."
+                )
+                sm.reset_cumulative_time()
+
+        except KeyboardInterrupt:
+            t_parcial = time.time() - t0_ingest
+            try:
+                from local_teacher.ingestion.state_manager import get_state_manager
+
+                sm = get_state_manager()
+                sm.add_cumulative_time(t_parcial)
+                print("\n\n[!] Ingesta interrumpida por el usuario.")
+                print(
+                    f"[!] {t_parcial:.2f}s guardados en la BD para sumar mañana automáticamente."
+                )
+            except Exception as e:
+                print(f"\n[!] Error al guardar tiempo parcial: {e}")
+            sys.exit(0)
 
     def run_chat(self):
         print("[*] Conectando a Qdrant...")
@@ -194,6 +243,7 @@ class LocalTeacherApp:
                 cache_store=self.cache_store,
                 usar_critico=self.args.critic,
                 llm_critic=self.llm_critic,
+                llm_fast=self.llm_fast,
             )
 
             respuesta_final = ""

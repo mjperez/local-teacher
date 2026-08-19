@@ -53,6 +53,8 @@ def build_knowledge_graph(docs: list[Document], llm: BaseChatModel, output_path:
     """
     _log.info(f"Iniciando extracción de Grafo de Conocimiento (GraphRAG) para {len(docs)} fragmentos...")
     
+    GLINER_BATCH_SIZE = 32
+
     # Cargar base de datos Kùzu
     db_path = str(output_path)
     _log.info(f"Conectando a KùzuDB en {db_path}...")
@@ -81,50 +83,73 @@ def build_knowledge_graph(docs: list[Document], llm: BaseChatModel, output_path:
     
     model = _get_gliner()
     
-    for i, doc in enumerate(docs):
-        # Saltar fragmentos ya procesados
-        if i in processed_indices:
+    # Procesar en lotes para aprovechar batch_predict_entities
+    for batch_start in range(0, total_docs, GLINER_BATCH_SIZE):
+        batch_end = min(batch_start + GLINER_BATCH_SIZE, total_docs)
+        
+        # Filtrar fragmentos ya procesados dentro de este lote
+        batch_indices = []
+        batch_texts = []
+        for i in range(batch_start, batch_end):
+            if i not in processed_indices:
+                batch_indices.append(i)
+                batch_texts.append(docs[i].page_content)
+        
+        if not batch_texts:
             continue
-            
-        print(f"\r    - Fragmento {i+1}/{total_docs} ({len(processed_indices)}/{total_docs} completados)...", end="", flush=True)
+        
+        print(f"\r    - {len(processed_indices)}/{total_docs} fragmentos completados...", end="", flush=True)
+        
         try:
-            # Predecir entidades
-            entities = model.predict_entities(doc.page_content, labels, threshold=0.5)
+            # Predicción en batch: una sola pasada por el modelo para N textos
+            all_entities = model.inference(batch_texts, labels, threshold=0.5)
             
-            # Limpiar y filtrar nombres
-            nombres = set()
-            for e in entities:
-                text = e["text"]
-                if _is_valid_entity(text):
-                    nombres.add(text.strip().title())
-            nombres = list(nombres)
+            # Recolectar todos los nodos y aristas del lote
+            all_nodes = set()
+            all_edges = []
             
-            # Crear grafo de co-ocurrencia: vincular todas las entidades encontradas en este fragmento
-            tripletas_extraidas = 0
-            for j in range(len(nombres)):
-                for k in range(j + 1, len(nombres)):
-                    origen = nombres[j]
-                    destino = nombres[k]
-                    relacion = "CO_OCCURS_WITH"
-                    
-                    try:
-                        conn.execute("MERGE (a:Entity {name: $name})", parameters={"name": origen})
-                        conn.execute("MERGE (b:Entity {name: $name})", parameters={"name": destino})
-                        conn.execute(
-                            "MATCH (a:Entity {name: $o}), (b:Entity {name: $d}) MERGE (a)-[r:Rel {type: $rel}]->(b)", 
-                            parameters={"o": origen, "d": destino, "rel": relacion}
-                        )
-                        tripletas_extraidas += 1
-                        aristas_creadas += 1
-                    except Exception as e:
-                        _log.error(f"KùzuDB Error en arista: {e}")
+            for idx, entities in zip(batch_indices, all_entities):
+                nombres = set()
+                for e in entities:
+                    text = e["text"]
+                    if _is_valid_entity(text):
+                        nombres.add(text.strip().title())
+                nombres = list(nombres)
+                
+                # Generar pares de co-ocurrencia
+                for j in range(len(nombres)):
+                    for k in range(j + 1, len(nombres)):
+                        all_nodes.add(nombres[j])
+                        all_nodes.add(nombres[k])
+                        all_edges.append((nombres[j], nombres[k]))
             
-            processed_indices.add(i)
-            # Guardamos el progreso
-            sm.mark_graph_chunk(i)
+            # Insertar nodos en bulk
+            conn.execute("BEGIN TRANSACTION")
+            for node_name in all_nodes:
+                try:
+                    conn.execute("MERGE (a:Entity {name: $name})", parameters={"name": node_name})
+                except Exception as e:
+                    _log.error(f"KùzuDB Error en nodo: {e}")
+            
+            # Insertar aristas en bulk
+            for origen, destino in all_edges:
+                try:
+                    conn.execute(
+                        "MATCH (a:Entity {name: $o}), (b:Entity {name: $d}) MERGE (a)-[r:Rel {type: $rel}]->(b)", 
+                        parameters={"o": origen, "d": destino, "rel": "CO_OCCURS_WITH"}
+                    )
+                    aristas_creadas += 1
+                except Exception as e:
+                    _log.error(f"KùzuDB Error en arista: {e}")
+            conn.execute("COMMIT")
+            
+            # Marcar todos los fragmentos del lote como procesados
+            for idx in batch_indices:
+                processed_indices.add(idx)
+                sm.mark_graph_chunk(idx)
                 
         except Exception as e:
-            _log.error(f"Error procesando fragmento {i}: {e}")
+            _log.error(f"Error procesando lote {batch_start}-{batch_end}: {e}")
             
     print(f"\n[+] Grafo construido con {aristas_creadas} nuevas aristas de co-ocurrencia.")
     _log.info(f"Grafo construido en disco con {aristas_creadas} nuevas aristas.")

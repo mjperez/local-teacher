@@ -29,9 +29,11 @@ class PipelineConsulta:
         usar_critico: bool = True,
         llm_critic: Optional[BaseChatModel] = None,
         kuzu_path: str = "./local_teacher_kuzu",
+        llm_fast: Optional[BaseChatModel] = None,
     ):
         self.retriever = retriever
         self.llm = llm
+        self.llm_fast = llm_fast
         self.busqueda_web_alternativa = busqueda_web_alternativa
         self.cache_store = cache_store
         self.usar_critico = usar_critico
@@ -96,7 +98,7 @@ class PipelineConsulta:
         # 2. Optimización y reformulación de pregunta
         self._progreso(0, 4, "Optimizando pregunta...")
         t_opt_start = time.time()
-        consulta_estructurada = reescribir_consulta(self.llm, consulta, chat_history)
+        consulta_estructurada = reescribir_consulta(self.llm_fast or self.llm, consulta, chat_history)
         consulta_optimizada = consulta_estructurada.consulta
         tracker.set_meta("optimized_query", consulta_optimizada)
         capitulo_filtro = consulta_estructurada.capitulo
@@ -183,15 +185,19 @@ class PipelineConsulta:
                     saltar_linea=True,
                 )
                 try:
+                    import concurrent.futures
                     t_web_start = time.time()
-                    resultados_web = self.herramienta_busqueda.invoke(
-                        consulta_optimizada
-                    )
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as exec_web:
+                        futuro = exec_web.submit(self.herramienta_busqueda.invoke, consulta_optimizada)
+                        resultados_web = futuro.result(timeout=10)
                     tracker.add_latency("Generacion_BusquedaWeb", t_web_start)
                     tracker.set_meta("web_search_used", True)
                     resultados_web_recortados = str(resultados_web)[:2000]
                     texto_contexto += f"\n\n--- RESULTADOS DE BÚSQUEDA WEB ---\n{resultados_web_recortados}"
                     tracker.set_meta("context_size_chars", len(texto_contexto))
+                except concurrent.futures.TimeoutError:
+                    _log.warning("Timeout en la búsqueda web tras 10 segundos.")
+                    mensaje_feedback += "\n[!] La búsqueda web automática tomó demasiado tiempo. Responde basándote solo en el contexto previo o admite que no posees información."
                 except Exception as e:
                     _log.warning("Falló la búsqueda web: %s", e)
                     mensaje_feedback += "\n[!] La búsqueda web automática falló. Responde basándote solo en el contexto previo o admite que no posees información."
@@ -206,6 +212,8 @@ class PipelineConsulta:
             }
 
             if self.usar_critico:
+                self._progreso(3, 4, "Tutor local generando y evaluando (esto tomará unos segundos)...", saltar_linea=True)
+                yield {"answer": f"\n*[Tutor local generando y evaluando internamente (Intento {intento}/3)...]*\n"}
                 respuesta = cadena_tutor.invoke(args_invoke)
                 borrador = (
                     respuesta.content

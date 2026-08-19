@@ -103,10 +103,9 @@ def cargar_archivos(
     items_a_procesar = []
     item_hashes = {}
 
-    for item in items:
-        if not item.is_file() or item.name.endswith("_toc.txt"):
-            continue
+    items_validos = [item for item in items if item.is_file() and not item.name.endswith("_toc.txt")]
 
+    for item in items_validos:
         file_hash = _calcular_hash(item)
         if file_hash in archivos_procesados:
             continue
@@ -115,7 +114,11 @@ def cargar_archivos(
         item_hashes[item] = file_hash
 
     if items_a_procesar:
-        print(f"[*] Extrayendo {len(items_a_procesar)} archivos pendientes...")
+        total = len(items_validos)
+        procesados = total - len(items_a_procesar)
+        if procesados > 0:
+            print(f"[*] Escaneo de archivos completado: {procesados} ya estaban en caché.")
+        print(f"[*] Extrayendo {len(items_a_procesar)} archivos nuevos o modificados...")
 
         args_list = [
             (
