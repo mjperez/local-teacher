@@ -58,6 +58,16 @@ class RedisCacheStore:
         except Exception as e:
             _log.warning(f"Error guardando en caché semántica: {e}")
 
+    def clear(self) -> None:
+        if not self.connected:
+            return
+        try:
+            from langchain_community.vectorstores import Redis
+            Redis.drop_index(index_name=self.index_name, delete_documents=True, redis_url=self.redis_url)
+            _log.info("[*] Índice de Caché Semántico (Redis) eliminado correctamente.")
+        except Exception as e:
+            _log.warning(f"Error al limpiar caché semántica: {e}")
+
 def get_semantic_cache_store(embeddings: Embeddings) -> RedisCacheStore:
     """Inicializa la conexión a Redis Cache."""
     host = os.getenv("REDIS_HOST", "localhost")

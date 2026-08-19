@@ -28,6 +28,7 @@ def stream_consulta(
     cache_store: Optional[BaseRetriever] = None,
     usar_critico: bool = True,
     llm_critic: Optional[BaseChatModel] = None,
+    llm_fast: Optional[BaseChatModel] = None,
 ) -> Iterator[dict]:
     """Transmite en streaming la respuesta del tutor local con barra de progreso en consola."""
     pipeline = PipelineConsulta(
@@ -37,6 +38,7 @@ def stream_consulta(
         cache_store=cache_store,
         usar_critico=usar_critico,
         llm_critic=llm_critic,
+        llm_fast=llm_fast,
     )
 
     def _progreso_print(

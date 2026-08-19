@@ -170,7 +170,7 @@ def reescribir_consulta(
 
         future = _optimizer_executor.submit(_invocar)
         try:
-            return future.result(timeout=45)
+            return future.result(timeout=20)
         except concurrent.futures.TimeoutError:
             _log.warning("Tiempo de espera agotado al optimizar consulta. Usando consulta original.")
             return ConsultaEstructurada(consulta=consulta, capitulo=None, entidades=[])

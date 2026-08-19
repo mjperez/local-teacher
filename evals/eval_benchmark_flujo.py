@@ -10,7 +10,7 @@ from pathlib import Path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from local_teacher.factory import obtener_modelos, obtener_llm_critico
-from local_teacher.ingestion.state_manager import StateManager
+from local_teacher.ingestion.state_manager import get_state_manager
 from local_teacher.ingestion.loader import cargar_archivos
 from local_teacher.ingestion.chunker import dividir_texto
 from local_teacher.ingestion.graph_builder import build_knowledge_graph
@@ -45,6 +45,9 @@ def ejecutar_prueba_completa(reingestar: bool = False):
     llm_critic = obtener_llm_critico("ollama", ollama_critic_llm="granite3-guardian:2b")
     t_modelos = time.time() - t0_modelos
     print(f"[+] Modelos inicializados en {t_modelos:.2f}s (LLM: llama3.2, Embeddings: granite-embedding, Critico: granite3-guardian)")
+
+    # 1.5. Aislar State Manager
+    get_state_manager(db_path=BENCHMARK_CHECKPOINT_DB)
 
     # 2. INGESTA Y RENDIMIENTO
     print("\n" + "-" * 80)

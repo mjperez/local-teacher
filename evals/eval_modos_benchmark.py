@@ -66,6 +66,7 @@ def benchmark_modos():
             "llm": llm_deepseek,
             "usar_critico": True,
             "llm_critic": llm_critic,
+            "llm_fast": llm_llama,
         },
     ]
 
@@ -104,6 +105,7 @@ def benchmark_modos():
                 usar_critico=modo["usar_critico"],
                 llm_critic=modo["llm_critic"],
                 kuzu_path=BENCHMARK_KUZU_DIR,
+                llm_fast=modo.get("llm_fast"),
             )
 
             t0 = time.time()

@@ -84,7 +84,7 @@ def get_qdrant_retriever(
                 print(f"[*] Checkpoint encontrado: {len(processed_batches)} lotes ya ingestados en Qdrant. Reanudando...")
 
         print(f"[*] Ingestando {len(documentos)} documentos jerárquicos en lotes...")
-        batch_size = 50
+        batch_size = 100
         total_lotes = (len(documentos) + batch_size - 1) // batch_size
         saltados = len(processed_batches)
         if saltados:
