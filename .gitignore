@@ -14,6 +14,7 @@ logs/
 evals/outputs/
 data/
 .qodo
+scripts/
 
 # Generated DBs and graph files
 .local_teacher_parents/
