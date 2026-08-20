@@ -107,9 +107,7 @@ def build_knowledge_graph(docs: list[Document], llm: BaseChatModel, output_path:
             else:
                 _log.error("GLiNER model no soporta extracción de entidades (versión incompatible).")
                 continue
-            
 
-            
             # Validar longitud
             if len(all_entities) != len(batch_texts):
                 _log.error(f"Inconsistencia en inferencia: esperadas {len(batch_texts)} salidas, obtenidas {len(all_entities)}.")

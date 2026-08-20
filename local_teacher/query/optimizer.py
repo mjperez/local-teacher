@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+import time
 import concurrent.futures
 from typing import List, Optional
 from pydantic import BaseModel, Field
@@ -169,8 +170,6 @@ def reescribir_consulta(
             )
             contenido = res.content if hasattr(res, "content") else str(res)
             return _extraer_json_o_campos(contenido, consulta)
-
-        import time
         t0 = time.time()
         future = _optimizer_executor.submit(_invocar)
         try:

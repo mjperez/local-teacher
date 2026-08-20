@@ -121,9 +121,10 @@ class LocalTeacherApp:
         )
         self.llm_fast = None
         if args.mode == "exact":
+            fast_model = getattr(args, "ollama_fast_llm", "llama3.2")
             self.llm_fast, _ = obtener_modelos(
                 args.provider,
-                ollama_llm="llama3.2",
+                ollama_llm=fast_model,
                 ollama_embed=args.ollama_embed,
                 ollama_host=args.ollama_host,
                 num_ctx=4096,
@@ -385,6 +386,11 @@ def main() -> None:
     parser.add_argument(
         "--ollama-critic-llm",
         default=os.getenv("OLLAMA_CRITIC_LLM", "granite3-guardian:2b"),
+    )
+    parser.add_argument(
+        "--ollama-fast-llm",
+        default=os.getenv("OLLAMA_FAST_LLM", "llama3.2"),
+        help="Modelo rápido auxiliar para optimización de consultas en modo exact (por defecto: llama3.2)",
     )
     parser.add_argument(
         "--ollama-embed", default=os.getenv("OLLAMA_EMBED", "granite-embedding:278m")

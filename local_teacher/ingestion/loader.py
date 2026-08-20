@@ -37,8 +37,6 @@ def get_cache_path(ruta_original: Path) -> Path:
         cache_dir.mkdir(exist_ok=True)
         return cache_dir / f"{ruta_original.stem}.jsonl"
 
-_get_cache_path = get_cache_path
-
 def _procesar_un_archivo(args: tuple) -> tuple[Path, list[Document]]:
     """Procesa un archivo individual según su extensión."""
     (

@@ -1,7 +1,6 @@
 import logging
-from typing import Iterator, Optional, Any, Protocol, List, Tuple
+from typing import Iterator, Optional
 from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 
 from local_teacher.query.types import SemanticCacheProtocol

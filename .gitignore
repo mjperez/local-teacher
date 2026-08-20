@@ -3,7 +3,7 @@
 __pycache__/
 .env
 .pytest_cache/
-scripts
+scripts/
 
 # Temporary and Cache files
 tmp*/
@@ -38,4 +38,3 @@ benchmark_*
 
 # Ignore large test docs
 test_docs/
-scripts/batch_index.py
