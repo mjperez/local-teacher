@@ -43,4 +43,5 @@ opencv-python
 
 # Utilidades y Caché
 redis
+langchain-redis
 pydantic

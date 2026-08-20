@@ -45,9 +45,10 @@ def _limpiar_formulas(texto: str) -> str:
     texto = re.sub(r"(\[fórmula(?:\s+no decodificada)?\]\s*)+", "[fórmula] ", texto)
     return texto.strip()
 
-def _get_docling_converter(enriquecer_formulas: bool, extraer_tablas: bool):
-    key = (enriquecer_formulas, extraer_tablas)
+def _get_docling_converter(enriquecer_formulas: bool, extraer_tablas: bool, extraer_figuras: bool = False):
+    key = (enriquecer_formulas, extraer_tablas, extraer_figuras)
     if key not in _docling_converters:
+        import torch
         from docling.datamodel.base_models import InputFormat
         from docling.datamodel.pipeline_options import PdfPipelineOptions
         from docling.datamodel.accelerator_options import (
@@ -57,7 +58,7 @@ def _get_docling_converter(enriquecer_formulas: bool, extraer_tablas: bool):
         from docling.document_converter import DocumentConverter, PdfFormatOption
 
         opts = PdfPipelineOptions()
-        opts.generate_picture_images = True
+        opts.generate_picture_images = bool(extraer_figuras)
         opts.generate_page_images = False
         opts.images_scale = 2.0
         opts.do_ocr = False
@@ -66,15 +67,14 @@ def _get_docling_converter(enriquecer_formulas: bool, extraer_tablas: bool):
         opts.layout_options.engine_options.compile_model = False
 
         # Escalar hilos por número de workers para evitar sobresuscripción.
-        # Con --workers N, el total de hilos de Docling sería N × num_threads.
-        # Dividimos cpu_count entre los workers activos y limitamos a [1, 4].
         try:
             workers = max(1, int(os.getenv("INGEST_WORKERS", "1")))
         except (ValueError, TypeError):
             workers = 1
         hilos_cpu = max(1, min(4, (os.cpu_count() or 1) // workers))
+        device = AcceleratorDevice.CUDA if torch.cuda.is_available() else AcceleratorDevice.AUTO
         opts.accelerator_options = AcceleratorOptions(
-            num_threads=hilos_cpu, device=AcceleratorDevice.AUTO
+            num_threads=hilos_cpu, device=device
         )
 
         _docling_converters[key] = DocumentConverter(
@@ -227,7 +227,7 @@ def cargar_docling(
 
         _log.info("Iniciando pasada rápida de Docling...")
         doc_fast = (
-            _get_docling_converter(False, extraer_tablas).convert(str(ruta)).document
+            _get_docling_converter(False, extraer_tablas, extraer_figuras).convert(str(ruta)).document
         )
 
         paginas_con_formulas = set()
@@ -274,7 +274,7 @@ def cargar_docling(
                     inicio = fin = p
             rangos.append((inicio, fin))
 
-            converter_vlm = _get_docling_converter(True, extraer_tablas)
+            converter_vlm = _get_docling_converter(True, extraer_tablas, extraer_figuras)
             for inicio, fin in rangos:
                 _log.info(f"  -> Procesando VLM para páginas {inicio}-{fin}...")
                 doc_lento = converter_vlm.convert(
