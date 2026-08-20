@@ -99,74 +99,71 @@ def build_knowledge_graph(docs: list[Document], llm: BaseChatModel, output_path:
             continue
 
         try:
-            # Predicción en batch: una sola pasada por el modelo para N textos
-            all_entities = model.inference(batch_texts, labels, threshold=0.5)
-            
-            # Recolectar todos los nodos y aristas del lote
-            all_nodes = set()
-            all_edges = []
-            
-            for idx, entities in zip(batch_indices, all_entities):
+            # Adaptador para robustez entre versiones de GLiNER
+            if hasattr(model, "batch_predict_entities"):
+                all_entities = model.batch_predict_entities(batch_texts, labels, threshold=0.5)
+            elif hasattr(model, "predict_entities"):
+                all_entities = [model.predict_entities(text, labels, threshold=0.5) for text in batch_texts]
+            else:
+                _log.error("GLiNER model no soporta extracción de entidades (versión incompatible).")
+                continue
+
+            # Validar longitud
+            if len(all_entities) != len(batch_texts):
+                _log.error(f"Inconsistencia en inferencia: esperadas {len(batch_texts)} salidas, obtenidas {len(all_entities)}.")
+                continue
+
+            for idx, entities, text in zip(batch_indices, all_entities, batch_texts):
                 nombres = set()
                 for e in entities:
-                    text = e["text"]
-                    if _is_valid_entity(text):
-                        nombres.add(text.strip().title())
+                    ent_text = e["text"]
+                    if _is_valid_entity(ent_text):
+                        nombres.add(ent_text.strip().title())
                 nombres = list(nombres)
                 
                 # Generar pares de co-ocurrencia
+                chunk_nodes = set()
+                chunk_edges = []
                 for j in range(len(nombres)):
                     for k in range(j + 1, len(nombres)):
-                        all_nodes.add(nombres[j])
-                        all_nodes.add(nombres[k])
-                        all_edges.append((nombres[j], nombres[k]))
-            
-            # Insertar nodos y aristas en una sola transacción.
-            # Si cualquier inserción falla, se hace ROLLBACK para evitar escribir
-            # un lote parcialmente inconsistente en el grafo.
-            conn.execute("BEGIN TRANSACTION")
-            batch_has_errors = False
-            try:
-                for node_name in all_nodes:
-                    try:
-                        conn.execute("MERGE (a:Entity {name: $name})", parameters={"name": node_name})
-                    except Exception as e:
-                        _log.error(f"KùzuDB Error en nodo: {e}")
-                        batch_has_errors = True
-                
-                # Insertar aristas en bulk
-                for origen, destino in all_edges:
-                    try:
-                        conn.execute(
-                            "MATCH (a:Entity {name: $o}), (b:Entity {name: $d}) MERGE (a)-[r:Rel {type: $rel}]->(b)", 
-                            parameters={"o": origen, "d": destino, "rel": "CO_OCCURS_WITH"}
-                        )
-                        aristas_creadas += 1
-                    except Exception as e:
-                        _log.error(f"KùzuDB Error en arista: {e}")
-                        batch_has_errors = True
+                        chunk_nodes.add(nombres[j])
+                        chunk_nodes.add(nombres[k])
+                        chunk_edges.append((nombres[j], nombres[k]))
 
-                if batch_has_errors:
-                    _log.warning(
-                        f"Lote {batch_start}-{batch_end} tuvo errores de inserción; ejecutando ROLLBACK."
-                    )
-                    conn.execute("ROLLBACK")
-                else:
-                    conn.execute("COMMIT")
-            except Exception as tx_err:
-                _log.error(f"Fallo en transacción KùzuDB, ejecutando ROLLBACK: {tx_err}")
+                # Transacción por chunk removida para evitar desajustes en el driver Kuzu Python
+                chunk_has_errors = False
                 try:
-                    conn.execute("ROLLBACK")
-                except Exception:
-                    pass
-                raise
-            
-            # Marcar todos los fragmentos del lote como procesados
-            for idx in batch_indices:
-                processed_indices.add(idx)
-                sm.mark_graph_chunk(idx)
+                    successful_nodes = set()
+                    for node_name in chunk_nodes:
+                        try:
+                            conn.execute("MERGE (a:Entity {name: $name})", parameters={"name": node_name})
+                            successful_nodes.add(node_name)
+                        except Exception as e:
+                            _log.error(f"KùzuDB Error en nodo '{node_name}': {e}")
+                            chunk_has_errors = True
+                    
+                    for origen, destino in chunk_edges:
+                        if origen not in successful_nodes or destino not in successful_nodes:
+                            continue
+                        try:
+                            conn.execute(
+                                "MATCH (a:Entity {name: $o}), (b:Entity {name: $d}) MERGE (a)-[r:Rel {type: $rel}]->(b)", 
+                                parameters={"o": origen, "d": destino, "rel": "CO_OCCURS_WITH"}
+                            )
+                            aristas_creadas += 1
+                        except Exception as e:
+                            _log.error(f"KùzuDB Error en arista '{origen}'-'{destino}': {e}")
+                            chunk_has_errors = True
 
-            # Actualizar progreso DESPUÉS de confirmar el lote para reflejar conteo real
+                    if chunk_has_errors:
+                        _log.warning(f"Errores en chunk {idx}; algunos elementos podrían no haberse insertado. No se marcará como procesado.")
+                    else:
+                        processed_indices.add(idx)
+                        sm.mark_graph_chunk(idx)
+                except Exception as tx_err:
+                    _log.error(f"Excepción en el chunk {idx}: {tx_err}")
+
+            # Actualizar progreso DESPUÉS del lote para reflejar conteo real
             print(f"\r    - {len(processed_indices)}/{total_docs} fragmentos completados...", end="", flush=True)
                 
         except Exception as e:

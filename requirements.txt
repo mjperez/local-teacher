@@ -19,7 +19,7 @@ fastembed
 kuzu
 
 # Herramientas Web
-ddgs
+duckduckgo-search
 
 # Re-ranking
 flashrank
@@ -40,3 +40,7 @@ gliner
 openai-whisper
 easyocr
 opencv-python
+
+# Utilidades y Caché
+redis
+pydantic

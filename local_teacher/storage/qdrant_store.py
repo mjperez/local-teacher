@@ -9,6 +9,7 @@ from langchain_classic.storage import LocalFileStore, EncoderBackedStore
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import json
 import logging
+import os
 
 _log = logging.getLogger(__name__)
 
@@ -88,7 +89,7 @@ def get_qdrant_retriever(
 
         print(f"[*] Ingestando {len(documentos)} documentos jerárquicos en lotes...")
         try:
-            batch_size = max(1, int(os.getenv("QDRANT_BATCH_SIZE", "100")))
+            batch_size = max(1, min(500, int(os.getenv("QDRANT_BATCH_SIZE", "100"))))
         except (ValueError, TypeError):
             _log.warning("QDRANT_BATCH_SIZE tiene un valor inválido; usando 100 por defecto.")
             batch_size = 100

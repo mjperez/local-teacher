@@ -1,6 +1,9 @@
 import os
+import logging
 from langchain_core.embeddings import Embeddings
 from langchain_core.language_models.chat_models import BaseChatModel
+
+_log = logging.getLogger(__name__)
 
 def obtener_modelos(
     provider: str,
@@ -24,10 +27,12 @@ def obtener_modelos(
         if host == "http://0.0.0.0" or host == "0.0.0.0":
             host = "http://127.0.0.1:11434"
             
+        _log.info(f"[*] Conectando a Ollama en {host} (LLM: {ollama_llm}, Embed: {ollama_embed})")
         _keep_alive = int(os.getenv("OLLAMA_KEEP_ALIVE", "300"))
+        _embed_keep_alive = int(os.getenv("OLLAMA_EMBED_KEEP_ALIVE", "0"))
         return (
             ChatOllama(model=ollama_llm, temperature=0, base_url=host, num_ctx=num_ctx, keep_alive=_keep_alive),
-            OllamaEmbeddings(model=ollama_embed, base_url=host, keep_alive=_keep_alive),
+            OllamaEmbeddings(model=ollama_embed, base_url=host, keep_alive=_embed_keep_alive),
         )
         
     raise ValueError(f"[-] Proveedor no soportado: {provider}")
@@ -54,6 +59,7 @@ def obtener_llm_critico(
         if host == "http://0.0.0.0" or host == "0.0.0.0":
             host = "http://127.0.0.1:11434"
             
+        _log.info(f"[*] Conectando a Ollama Crítico en {host} (LLM: {ollama_critic_llm})")
         _keep_alive = int(os.getenv("OLLAMA_KEEP_ALIVE", "300"))
         return ChatOllama(model=ollama_critic_llm, temperature=0, base_url=host, num_ctx=num_ctx, keep_alive=_keep_alive)
         

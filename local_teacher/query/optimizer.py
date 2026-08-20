@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+import time
 import concurrent.futures
 from typing import List, Optional
 from pydantic import BaseModel, Field
@@ -142,6 +143,7 @@ def reescribir_consulta(
                 "4. Extrae los nombres de entidades y conceptos técnicos más relevantes.\n"
                 "5. Identifica la intención: 'conceptual' (teoría), 'ejercicio' (problema práctico) o 'aclaracion' (duda rápida).\n"
                 "6. Mantén el idioma de la consulta.\n"
+                "7. IMPORTANTE: NO escribas código SQL, no escribas SELECT, y no uses sintaxis de base de datos relacional. La salida debe ser JSON puro con texto en lenguaje natural.\n"
                 "Responde en formato JSON estricto con las siguientes claves: 'consulta', 'capitulo', 'entidades', 'intencion'.",
             ),
             (
@@ -168,17 +170,21 @@ def reescribir_consulta(
             )
             contenido = res.content if hasattr(res, "content") else str(res)
             return _extraer_json_o_campos(contenido, consulta)
-
+        t0 = time.time()
         future = _optimizer_executor.submit(_invocar)
         try:
             try:
-                _timeout = max(5, min(300, int(os.getenv("OPTIMIZER_TIMEOUT_SECS", "20"))))
+                _timeout = max(5, min(60, int(os.getenv("OPTIMIZER_TIMEOUT_SECS", "45"))))
             except (ValueError, TypeError):
-                _log.warning("OPTIMIZER_TIMEOUT_SECS tiene un valor inválido; usando 20s por defecto.")
-                _timeout = 20
-            return future.result(timeout=_timeout)
+                _log.warning("OPTIMIZER_TIMEOUT_SECS tiene un valor inválido; usando 45s por defecto.")
+                _timeout = 45
+            res_val = future.result(timeout=_timeout)
+            _log.info(f"Optimización completada en {time.time() - t0:.2f}s.")
+            return res_val
         except concurrent.futures.TimeoutError:
-            _log.warning("Tiempo de espera agotado al optimizar consulta. Usando consulta original.")
+            t_elapsed = time.time() - t0
+            model_name = getattr(llm, "model", getattr(llm, "model_name", "Desconocido"))
+            _log.warning(f"Tiempo de espera agotado ({t_elapsed:.2f}s) al optimizar consulta con el modelo {model_name}. Usando consulta original.")
             return ConsultaEstructurada(consulta=consulta, capitulo=None, entidades=[])
     except Exception as e:
         _log.error("Fallo al reescribir la consulta: %s. Usando consulta original.", e)

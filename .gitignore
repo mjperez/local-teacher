@@ -3,6 +3,7 @@
 __pycache__/
 .env
 .pytest_cache/
+scripts/
 
 # Temporary and Cache files
 tmp*/

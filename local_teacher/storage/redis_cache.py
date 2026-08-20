@@ -11,10 +11,12 @@ class RedisCacheStore:
     """
     Caché Semántico usando Redis Stack (RediSearch) y langchain_community.vectorstores.Redis.
     """
-    def __init__(self, embeddings: Embeddings, host: str = "localhost", port: int = 6379):
+    INDEX_PREFIX = "local_teacher_"
+
+    def __init__(self, embeddings: Embeddings, host: str = "localhost", port: int = 6379, index_name: str | None = None):
         self.redis_url = f"redis://{host}:{port}"
         self.embeddings = embeddings
-        self.index_name = "local_teacher_cache"
+        self.index_name = index_name if index_name else f"{self.INDEX_PREFIX}cache"
         try:
             import redis
             r = redis.Redis.from_url(self.redis_url)
@@ -58,18 +60,29 @@ class RedisCacheStore:
         except Exception as e:
             _log.warning(f"Error guardando en caché semántica: {e}")
 
-    def clear(self) -> None:
+    def clear(self) -> bool:
         if not self.connected:
-            return
-        # Guardrail: solo borrar índices que pertenezcan a esta app para evitar
-        # destruir datos de otros servicios que compartan el mismo servidor Redis.
-        if not self.index_name.startswith("local_teacher_"):
+            return False
+        
+        # Guardrail de seguridad: solo permitir borrado en instancias locales o con autorización explícita.
+        is_local = "localhost" in self.redis_url or "127.0.0.1" in self.redis_url
+        allow_drop = os.getenv("REDIS_ALLOW_DROP", "true" if is_local else "false").lower() == "true"
+        if not allow_drop:
+            _log.warning(
+                "Intento de borrado de caché bloqueado en servidor Redis no local. "
+                "Configura REDIS_ALLOW_DROP=true para permitirlo."
+            )
+            return False
+
+        # Guardrail adicional: solo borrar índices que pertenezcan a esta app.
+        if not self.index_name.startswith(self.INDEX_PREFIX):
             _log.error(
-                "[!] Abortando clear(): el index_name '%s' no tiene el prefijo 'local_teacher_'. "
+                "[!] Abortando clear(): el index_name '%s' no tiene el prefijo '%s'. "
                 "Verifica la configuración antes de continuar.",
                 self.index_name,
+                self.INDEX_PREFIX,
             )
-            return
+            return False
         try:
             from langchain_community.vectorstores import Redis
             _log.warning(
@@ -79,11 +92,22 @@ class RedisCacheStore:
             )
             Redis.drop_index(index_name=self.index_name, delete_documents=True, redis_url=self.redis_url)
             _log.info("[*] Índice de Caché Semántico (Redis) eliminado correctamente.")
+            return True
         except Exception as e:
             _log.warning(f"Error al limpiar caché semántica: {e}")
+            return False
 
-def get_semantic_cache_store(embeddings: Embeddings) -> RedisCacheStore:
-    """Inicializa la conexión a Redis Cache."""
+def get_semantic_cache_store(embeddings: Embeddings, index_name: str | None = None) -> RedisCacheStore:
+    """Inicializa la conexión a Redis Cache.
+    
+    Si se provee index_name, DEBE comenzar con 'local_teacher_' para 
+    que el método clear() pueda limpiarlo de forma segura.
+    """
+    if index_name and not index_name.startswith(RedisCacheStore.INDEX_PREFIX):
+        _log.warning(
+            f"El index_name '{index_name}' provisto no comienza con '{RedisCacheStore.INDEX_PREFIX}'. "
+            "El método clear() lo ignorará por seguridad."
+        )
     host = os.getenv("REDIS_HOST", "localhost")
     port = int(os.getenv("REDIS_PORT", "6379"))
-    return RedisCacheStore(embeddings=embeddings, host=host, port=port)
+    return RedisCacheStore(embeddings=embeddings, host=host, port=port, index_name=index_name)

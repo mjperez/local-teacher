@@ -1,9 +1,11 @@
 import re
 import time
 import logging
-from typing import Iterator, Optional
+from typing import Iterator, Optional, Any
 from langchain_core.documents import Document
 from langchain_core.language_models.chat_models import BaseChatModel
+
+from local_teacher.query.types import SemanticCacheProtocol
 from langchain_core.retrievers import BaseRetriever
 from langchain_community.tools import DuckDuckGoSearchRun
 
@@ -26,7 +28,7 @@ class PipelineConsulta:
         llm: BaseChatModel,
         busqueda_web_alternativa: bool = False,
         web_filter: str = "",
-        cache_store: Optional[BaseRetriever] = None,
+        cache_store: Optional[SemanticCacheProtocol] = None,
         usar_critico: bool = True,
         llm_critic: Optional[BaseChatModel] = None,
         kuzu_path: str = "./local_teacher_kuzu",

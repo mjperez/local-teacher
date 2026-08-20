@@ -1,6 +1,8 @@
 import sqlite3
 import logging
 from pathlib import Path
+import contextvars
+import contextlib
 
 _log = logging.getLogger(__name__)
 
@@ -179,15 +181,17 @@ class StateManager:
             _log.warning("Error al resetear tiempo acumulado: %s", e)
 
 
-_global_state_manager = None
-
+_global_state_manager: contextvars.ContextVar[StateManager | None] = contextvars.ContextVar(
+    "_global_state_manager", default=None
+)
 
 def get_state_manager() -> StateManager:
     """Devuelve la instancia global (singleton) del gestor de estado de producción."""
-    global _global_state_manager
-    if _global_state_manager is None:
-        _global_state_manager = StateManager()
-    return _global_state_manager
+    sm = _global_state_manager.get()
+    if sm is None:
+        sm = StateManager()
+        _global_state_manager.set(sm)
+    return sm
 
 
 def create_state_manager(db_path: Path | str) -> StateManager:
@@ -199,13 +203,25 @@ def create_state_manager(db_path: Path | str) -> StateManager:
     return StateManager(db_path=db_path)
 
 
-def override_state_manager(instance: StateManager) -> None:
-    """Reemplaza el singleton global con una instancia específica.
+def override_state_manager(instance: StateManager | None) -> None:
+    """[OBSOLETO] Reemplaza el singleton global con una instancia específica.
 
-    Usar en tests/benchmarks ANTES de llamar a cualquier módulo de ingesta
-    para garantizar que todos usen la BD de checkpoints aislada.
-    Llamar a `get_state_manager()` sin argumentos restaura el comportamiento
-    normal al siguiente ciclo si la instancia se pone a None externamente.
+    AVISO: Mutar este singleton globalmente puede causar filtraciones de estado
+    entre hilos o tareas asíncronas. Usa `isolated_state_manager` en su lugar.
     """
-    global _global_state_manager
-    _global_state_manager = instance
+    _global_state_manager.set(instance)
+
+
+@contextlib.contextmanager
+def isolated_state_manager(db_path: Path | str):
+    """Context manager seguro para usar un StateManager aislado en tests.
+    
+    Asegura que la instancia global se reemplace por una temporal solo 
+    durante la ejecución del bloque 'with' de manera local al contexto 
+    (thread-safe y async-safe), y luego restaura la original.
+    """
+    token = _global_state_manager.set(StateManager(db_path=db_path))
+    try:
+        yield _global_state_manager.get()
+    finally:
+        _global_state_manager.reset(token)
