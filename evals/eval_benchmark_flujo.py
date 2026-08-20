@@ -46,10 +46,10 @@ def _ejecutar_prueba_completa_internal(reingestar: bool = False):
 
     # 1. Cargar Modelos de LLM y Embeddings
     t0_modelos = time.time()
-    llm, embeddings = obtener_modelos("ollama", ollama_llm="llama3.2", ollama_embed="granite-embedding:278m")
+    llm, embeddings = obtener_modelos("ollama", ollama_llm="llama3.2", embed_provider="fastembed")
     llm_critic = obtener_llm_critico("ollama", ollama_critic_llm="granite3-guardian:2b")
     t_modelos = time.time() - t0_modelos
-    print(f"[+] Modelos inicializados en {t_modelos:.2f}s (LLM: llama3.2, Embeddings: granite-embedding, Critico: granite3-guardian)")
+    print(f"[+] Modelos inicializados en {t_modelos:.2f}s (LLM: llama3.2, Embeddings: FastEmbed ONNX, Critico: granite3-guardian)")
 
     # 1.5. Aislar State Manager
     # Esto ahora se maneja vía el context manager en ejecutar_prueba_completa()
@@ -219,4 +219,4 @@ def _ejecutar_prueba_completa_internal(reingestar: bool = False):
 
 
 if __name__ == "__main__":
-    ejecutar_prueba_completa(reingestar=False)
+    ejecutar_prueba_completa(reingestar=True)

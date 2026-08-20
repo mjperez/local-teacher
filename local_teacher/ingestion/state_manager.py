@@ -130,6 +130,20 @@ class StateManager:
         except Exception as e:
             _log.warning("Error al guardar fragmento del grafo: %s", e)
 
+    def mark_graph_chunks_batch(self, chunk_indices: list[int] | set[int]) -> None:
+        """Registra múltiples fragmentos del grafo como completados en una sola transacción."""
+        if not chunk_indices:
+            return
+        try:
+            with self._obtener_conexion() as conn:
+                conn.executemany(
+                    "INSERT OR IGNORE INTO graph_chunks (chunk_index) VALUES (?)",
+                    [(idx,) for idx in chunk_indices],
+                )
+                conn.commit()
+        except Exception as e:
+            _log.warning("Error al guardar lote de fragmentos del grafo: %s", e)
+
     def clear(self) -> None:
         """Limpia todos los checkpoints registrados eliminando las filas de las tablas."""
         try:

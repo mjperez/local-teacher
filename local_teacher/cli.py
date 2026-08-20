@@ -134,6 +134,8 @@ class LocalTeacherApp:
             ollama_llm=args.ollama_llm,
             ollama_embed=args.ollama_embed,
             ollama_host=args.ollama_host,
+            embed_provider=getattr(args, "embed_provider", "fastembed"),
+            fastembed_model=getattr(args, "fastembed_model", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"),
         )
         self.llm_critic = obtener_llm_critico(
             args.provider,
@@ -444,6 +446,17 @@ def main() -> None:
         "--ollama-fast-llm",
         default=os.getenv("OLLAMA_FAST_LLM", "llama3.2"),
         help="Modelo rápido auxiliar para optimización de consultas en modo exact (por defecto: llama3.2)",
+    )
+    parser.add_argument(
+        "--embed-provider",
+        choices=["fastembed", "ollama"],
+        default=os.getenv("LOCAL_TEACHER_EMBED_PROVIDER", "fastembed"),
+        help="Motor de embeddings: 'fastembed' (ONNX/C++ ultrarrápido) o 'ollama' (servidor Ollama).",
+    )
+    parser.add_argument(
+        "--fastembed-model",
+        default=os.getenv("FASTEMBED_MODEL", "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"),
+        help="Modelo FastEmbed a utilizar (por defecto: sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2).",
     )
     parser.add_argument(
         "--ollama-embed", default=os.getenv("OLLAMA_EMBED", "granite-embedding:278m")
