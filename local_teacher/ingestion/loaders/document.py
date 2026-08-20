@@ -108,6 +108,15 @@ def _caption_docling(doc, picture) -> str:
     return min(candidatos, key=lambda c: c[0])[1] if candidatos else ""
 
 def _extraer_figuras(ruta_pdf: Path, doc, destino: Path) -> list[dict]:
+    captions_file = destino / "captions.json"
+    if captions_file.exists():
+        try:
+            figuras = json.loads(captions_file.read_text(encoding="utf-8"))
+            if figuras and all(Path(f.get("ruta", "")).exists() for f in figuras):
+                return figuras
+        except Exception:
+            pass
+
     destino.mkdir(parents=True, exist_ok=True)
     figuras = []
     for i, pic in enumerate(doc.pictures, 1):
@@ -131,6 +140,23 @@ def _extraer_figuras(ruta_pdf: Path, doc, destino: Path) -> list[dict]:
     return figuras
 
 def _extraer_tablas(doc, destino: Path) -> list[dict]:
+    if destino.exists():
+        tablas_md = list(destino.glob("tabla_*.md"))
+        if tablas_md:
+            tablas = []
+            for i, p_md in enumerate(sorted(tablas_md), 1):
+                p_csv = p_md.with_suffix(".csv")
+                tablas.append(
+                    {
+                        "indice": i,
+                        "ruta_markdown": str(p_md),
+                        "ruta_csv": str(p_csv) if p_csv.exists() else "",
+                        "filas": 0,
+                        "columnas": 0,
+                    }
+                )
+            return tablas
+
     destino.mkdir(parents=True, exist_ok=True)
     tablas = []
     for i, table in enumerate(doc.tables, 1):

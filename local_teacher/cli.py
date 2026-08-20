@@ -387,7 +387,12 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="CLI simple de local-teacher")
     parser.add_argument("--ingest", help="Archivo o directorio a ingerir")
     parser.add_argument("--query", help="Pregunta para el tutor")
-    parser.add_argument("--figures", action="store_true", help="Extract PNG images")
+    parser.add_argument(
+        "--figures",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Extract PNG images. Enabled by default.",
+    )
     parser.add_argument(
         "--tables",
         action=argparse.BooleanOptionalAction,
