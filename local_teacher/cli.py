@@ -158,7 +158,14 @@ class LocalTeacherApp:
         self.busqueda_web_alternativa = getattr(args, "web", False) is not False
         self.web_filter = args.web if isinstance(getattr(args, "web", False), str) else ""
         
-        print(f"[*] Modelos inicializados (LLM: {args.ollama_llm}, Embed: {args.ollama_embed}, Supervisor: {args.ollama_critic_llm})")
+        embed_display = (
+            f"FastEmbed ({args.fastembed_model.split('/')[-1]})"
+            if getattr(args, "embed_provider", "fastembed") == "fastembed"
+            else f"Ollama ({args.ollama_embed})"
+        )
+        print(
+            f"[*] Modelos inicializados (LLM: {args.ollama_llm}, Embed: {embed_display}, Supervisor: {args.ollama_critic_llm})"
+        )
 
     def ingest(self):
         t0_ingest = time.time()
