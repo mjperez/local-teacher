@@ -74,7 +74,7 @@ def recuperar_y_filtrar(
     resultados = ranker.rerank(rerank_request)
 
     final_docs: list[Document] = []
-    min_score = 0.1
+    min_score = 0.01
 
     for res in resultados[:10]:
         if res["score"] < min_score:
@@ -83,9 +83,9 @@ def recuperar_y_filtrar(
         doc.metadata["rerank_score"] = res["score"]
         final_docs.append(doc)
 
-    # Si ningún documento supera el umbral, retornar los 3 mejores como respaldo
+    # Si ningún documento supera el umbral, retornar los 5 mejores como respaldo
     if not final_docs and resultados:
-        for res in resultados[:3]:
+        for res in resultados[:5]:
             doc = Document(page_content=res["text"], metadata=res["meta"])
             doc.metadata["rerank_score"] = res["score"]
             final_docs.append(doc)

@@ -31,7 +31,6 @@ class PipelineConsulta:
         cache_store: Optional[SemanticCacheProtocol] = None,
         usar_critico: bool = True,
         llm_critic: Optional[BaseChatModel] = None,
-        kuzu_path: str = "./local_teacher_kuzu",
         llm_fast: Optional[BaseChatModel] = None,
     ):
         self.retriever = retriever
@@ -42,7 +41,6 @@ class PipelineConsulta:
         self.cache_store = cache_store
         self.usar_critico = usar_critico
         self.llm_critic = llm_critic
-        self.kuzu_path = kuzu_path
         self.herramienta_busqueda = (
             DuckDuckGoSearchRun() if busqueda_web_alternativa else None
         )
@@ -64,7 +62,9 @@ class PipelineConsulta:
         chat_history: list = None,
         progreso_callback=None,
     ) -> Iterator[dict]:
-        """Ejecuta el pipeline completo de consulta transmitiendo fragmentos."""
+        if not consulta or not consulta.strip():
+            return
+
         self.progreso_callback = progreso_callback
         tracker = QueryMetricsTracker(
             consulta, self.llm, self.llm_critic, self.usar_critico
@@ -110,16 +110,10 @@ class PipelineConsulta:
         intencion_filtro = getattr(consulta_estructurada, "intencion", "conceptual")
         tracker.add_latency("Optimizacion_Reescritura", t_opt_start)
 
-        # 3. Consulta y expansión con Grafo de Conocimiento
+        # 3. Consulta y enriquecimiento con Grafo de Conocimiento
         self._progreso(1, 4, "Buscando en Grafo de Conocimiento...")
         t_grafo_start = time.time()
-        contexto_grafo, palabras_clave_grafo = obtener_contexto_grafo(
-            entidades_filtro, db_path=self.kuzu_path
-        )
-        if palabras_clave_grafo:
-            expansion = " ".join(palabras_clave_grafo[:5])
-            consulta_optimizada = f"{consulta_optimizada} {expansion}"
-            tracker.set_meta("optimized_query", consulta_optimizada)
+        contexto_grafo, _ = obtener_contexto_grafo(entidades_filtro)
         tracker.add_latency("Recuperacion_Grafo", t_grafo_start)
 
         # 4. Recuperación híbrida y reranking

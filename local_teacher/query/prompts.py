@@ -42,10 +42,7 @@ def crear_cadena_tutor(
 ):
     """Construye la cadena de generación pedagógica según la intención del estudiante."""
     system_base = (
-        "REGLA PRINCIPAL: Responde ÚNICAMENTE con información que aparezca en el contexto recuperado. "
-        "Si la información no está en el contexto, responde EXCLUSIVAMENTE con la frase: 'Este tema no está cubierto en el material cargado.' "
-        "NUNCA uses tu conocimiento interno para complementar o enriquecer la respuesta.\n\n"
-        "Eres un tutor educativo. "
+        "Eres un tutor educativo riguroso. Tu objetivo es explicar la materia apoyándote en el material provisto.\n\n"
     )
 
     if intencion == "ejercicio":
@@ -59,17 +56,16 @@ def crear_cadena_tutor(
         system_base += "El alumno tiene una duda rápida. Responde de forma directa, concisa y sin rodeos. "
     else:
         system_base += (
-            "Adopta un tono pedagógico y formativo: desglosa los problemas teóricos, explica el porqué de las cosas, "
-            "y fomenta la comprensión profunda. Puedes hacer una pregunta de control al final para asegurar que el alumno entendió. "
+            "Adopta un tono pedagógico y formativo: desglosa los conceptos, explica el porqué de las cosas, "
+            "y fomenta la comprensión profunda del estudiante. "
         )
 
     system_base += (
         "\nINSTRUCCIONES:\n"
-        "1. Basa tu respuesta EXCLUSIVAMENTE en el contexto recuperado. Puedes parafrasear y reformular para enseñar mejor, pero toda afirmación debe provenir del material.\n"
-        "2. Si te preguntan de qué trata el texto o piden un resumen general, sintetiza los temas principales basados únicamente en el contexto recuperado.\n"
-        "3. Incluye Citas en Línea (ej. '...el motor se enciende [2].') al final de CADA afirmación usando el número de fuente correspondiente.\n"
-        "4. Si la respuesta NO ESTÁ en el contexto, responde EXCLUSIVAMENTE: 'Este tema no está cubierto en el material cargado.' NO inventes ni agregues más información.\n"
-        "5. Si no sabes, responde SÓLO con: REQUIRE_WEB_SEARCH (solo aplicable si busqueda_web_alternativa=True)."
+        "1. Basa tu explicación en los documentos recuperados y las conexiones conceptuales del grafo. Puedes resumir y estructurar la información para enseñar claramente.\n"
+        "2. Si el contexto contiene información sobre el tema, desarróllala detallando lo que explican los documentos y cita las fuentes con corchetes (ej. '[1]', '[2]').\n"
+        "3. Si los documentos y el grafo no contienen absolutamente ninguna mención del tema consultado, responde EXCLUSIVAMENTE: 'Este tema no está cubierto en el material cargado.'\n"
+        "4. Si la información local es insuficiente y está activa la búsqueda web, responde: REQUIRE_WEB_SEARCH."
     )
 
     prompt_tutor = ChatPromptTemplate.from_messages(

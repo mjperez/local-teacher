@@ -1,78 +1,86 @@
 import logging
-from pathlib import Path
-import kuzu
+from typing import Optional
+from local_teacher.graph import MemgraphClient, get_memgraph_client
 
 _log = logging.getLogger(__name__)
 
 
 def obtener_contexto_grafo(
-    entidades_filtro: list[str], db_path: str | Path = "./local_teacher_kuzu"
+    entidades_filtro: list[str],
+    client: Optional[MemgraphClient] = None,
+    limit: int = 15,
 ) -> tuple[str, list[str]]:
-    """Consulta el Grafo de Conocimiento (Kùzu) y expande la búsqueda con entidades relacionadas."""
+    """
+    Consulta el Grafo de Conocimiento en Memgraph MAGE y expande la búsqueda con entidades relacionadas.
+    
+    Aprovecha la búsqueda bidireccional ponderada y devuelve el contexto estructurado y las palabras clave.
+    """
     contexto_grafo = "(No se detectaron entidades o no hay grafo disponible)"
     palabras_clave_grafo: list[str] = []
 
     if not entidades_filtro:
         return contexto_grafo, palabras_clave_grafo
 
-    db_path_obj = Path(db_path)
-    if not db_path_obj.exists():
+    # Limpiar y normalizar entidades
+    entidades_limpias = [e.strip() for e in entidades_filtro if e and len(e.strip()) > 1]
+    if not entidades_limpias:
         return contexto_grafo, palabras_clave_grafo
 
     try:
-        db = kuzu.Database(str(db_path_obj))
-        conn = kuzu.Connection(db)
+        memgraph = client or get_memgraph_client()
 
-        try:
-            conn.execute("MATCH (n:Entity) RETURN n LIMIT 1")
-        except RuntimeError:
+        query = """
+        MATCH (a:Entity)-[r:Rel]-(b:Entity)
+        WHERE ANY(ent IN $entidades WHERE toLower(a.name) CONTAINS toLower(ent))
+        RETURN a.name AS source, 
+               COALESCE(r.type, 'CO_OCCURS_WITH') AS rel, 
+               b.name AS target, 
+               COALESCE(r.weight, 1) AS weight,
+               b.community AS community
+        ORDER BY weight DESC
+        LIMIT $limit
+        """
+        
+        records = memgraph.execute_query(
+            query,
+            {"entidades": entidades_limpias, "limit": limit},
+        )
+
+        if not records:
             return contexto_grafo, palabras_clave_grafo
 
         conexiones = []
-        nodos_encontrados = set()
+        nodos_vistos = set()
 
-        for entidad in entidades_filtro:
-            res = conn.execute(
-                "MATCH (n:Entity) WHERE n.name CONTAINS $ent RETURN n.name",
-                parameters={"ent": entidad},
-            )
-            while res.has_next():
-                nodo = res.get_next()[0]
-                nodos_encontrados.add(nodo)
+        for rec in records:
+            source = rec.get("source")
+            rel = rec.get("rel")
+            target = rec.get("target")
+            weight = rec.get("weight", 1)
 
-        for nodo in nodos_encontrados:
-            palabras_clave_grafo.append(nodo)
+            if source:
+                nodos_vistos.add(source)
+            if target:
+                nodos_vistos.add(target)
 
-            # Relaciones salientes
-            out_res = conn.execute(
-                "MATCH (a:Entity {name: $n})-[r:Rel]->(b:Entity) RETURN a.name, r.type, b.name",
-                parameters={"n": nodo},
-            )
-            while out_res.has_next():
-                origen, rel, destino = out_res.get_next()
-                palabras_clave_grafo.append(destino)
-                conexiones.append(f"- {origen} [{rel}] {destino}")
+            if source and target:
+                if weight and weight > 1:
+                    conexiones.append(f"- {source} [{rel} (fuerza: {weight})] {target}")
+                else:
+                    conexiones.append(f"- {source} [{rel}] {target}")
 
-            # Relaciones entrantes
-            in_res = conn.execute(
-                "MATCH (a:Entity)-[r:Rel]->(b:Entity {name: $n}) RETURN a.name, r.type, b.name",
-                parameters={"n": nodo},
-            )
-            while in_res.has_next():
-                origen, rel, destino = in_res.get_next()
-                palabras_clave_grafo.append(origen)
-                conexiones.append(f"- {origen} [{rel}] {destino}")
-
-        conexiones_unicas = list(set(conexiones))
-        if conexiones_unicas:
+        if conexiones:
+            # Eliminar posibles duplicados preservando el orden por peso
+            conexiones_unicas = list(dict.fromkeys(conexiones))
             contexto_grafo = "\n".join(conexiones_unicas)
+            palabras_clave_grafo = list(nodos_vistos)
             _log.info(
-                "Se inyectaron %d conexiones del Grafo de Conocimiento al contexto.",
+                "Se inyectaron %d conexiones de Memgraph al contexto.",
                 len(conexiones_unicas),
             )
 
-        return contexto_grafo, list(set(palabras_clave_grafo))
+        return contexto_grafo, palabras_clave_grafo
 
     except Exception as e:
-        _log.error("Error al consultar la base de datos de grafos Kùzu: %s", e)
+        _log.error("Error al consultar el Grafo de Conocimiento en Memgraph: %s", e)
         return contexto_grafo, palabras_clave_grafo
