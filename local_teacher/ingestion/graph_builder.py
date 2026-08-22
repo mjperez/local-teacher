@@ -44,8 +44,12 @@ def _get_gliner():
         device = "cuda" if torch.cuda.is_available() else "cpu"
         _log.info("Cargando modelo GLiNER en %s...", device.upper())
         print(f"[*] Cargando modelo GLiNER en {device.upper()} (GPU)..." if device == "cuda" else "[*] Cargando modelo GLiNER en CPU...")
-        from gliner import GLiNER
-        _gliner_model = GLiNER.from_pretrained("urchade/gliner_medium-v2.1").to(device)
+        try:
+            from gliner import GLiNER
+            _gliner_model = GLiNER.from_pretrained("urchade/gliner_medium-v2.1").to(device)
+        except Exception as e:
+            _log.warning("No se pudo cargar GLiNER. La extracción de grafos se omitirá: %s", e)
+            return None
     return _gliner_model
 
 
@@ -81,6 +85,9 @@ def build_knowledge_graph(
     labels = ["Person", "Organization", "Technology", "Concept", "Tool", "Process", "Algorithm", "Metric"]
     
     model = _get_gliner()
+    if model is None:
+        _log.warning("Modelo GLiNER no disponible. Omitiendo construcción de grafo.")
+        return memgraph
     
     for batch_start in range(0, total_docs, GLINER_BATCH_SIZE):
         batch_end = min(batch_start + GLINER_BATCH_SIZE, total_docs)

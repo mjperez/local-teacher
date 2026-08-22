@@ -7,7 +7,10 @@ from langchain_core.language_models.chat_models import BaseChatModel
 
 from local_teacher.query.types import SemanticCacheProtocol
 from langchain_core.retrievers import BaseRetriever
-from langchain_community.tools import DuckDuckGoSearchRun
+try:
+    from langchain_duckduckgo import DuckDuckGoSearchRun
+except ImportError:
+    from langchain_community.tools import DuckDuckGoSearchRun
 
 from local_teacher.metrics import QueryMetricsTracker
 from local_teacher.query.optimizer import reescribir_consulta
@@ -41,6 +44,8 @@ class PipelineConsulta:
         self.cache_store = cache_store
         self.usar_critico = usar_critico
         self.llm_critic = llm_critic
+        if self.usar_critico and not self.llm_critic:
+            self.llm_critic = self.llm
         self.herramienta_busqueda = (
             DuckDuckGoSearchRun() if busqueda_web_alternativa else None
         )
