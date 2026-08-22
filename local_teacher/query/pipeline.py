@@ -301,7 +301,6 @@ class PipelineConsulta:
                 if self.usar_critico:
                     for i in range(0, len(borrador), 15):
                         yield {"answer": borrador[i:i+15]}
-                        time.sleep(0.01)
 
                 yield {"context_docs": docs}
                 return

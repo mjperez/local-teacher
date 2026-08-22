@@ -19,14 +19,16 @@ class StateManager:
         else:
             self.db_path = Path(db_path)
             
+        self._conn = None
         self._init_db()
 
     def _obtener_conexion(self) -> sqlite3.Connection:
-        """Crea una conexión con timeout extendido y modo WAL activado."""
-        conn = sqlite3.connect(str(self.db_path), timeout=30.0)
-        conn.execute("PRAGMA journal_mode=WAL;")
-        conn.execute("PRAGMA synchronous=NORMAL;")
-        return conn
+        """Crea una conexión persistente con timeout extendido y modo WAL activado."""
+        if self._conn is None:
+            self._conn = sqlite3.connect(str(self.db_path), timeout=30.0, check_same_thread=False)
+            self._conn.execute("PRAGMA journal_mode=WAL;")
+            self._conn.execute("PRAGMA synchronous=NORMAL;")
+        return self._conn
 
     def _init_db(self) -> None:
         """Inicializa las tablas necesarias si no existen."""
