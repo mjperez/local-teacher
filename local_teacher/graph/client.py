@@ -116,6 +116,8 @@ def get_memgraph_client(
     global _global_client
     if _global_client is None:
         _global_client = MemgraphClient(uri=uri, username=username, password=password)
+        import atexit
+        atexit.register(_global_client.close)
     return _global_client
 
 
