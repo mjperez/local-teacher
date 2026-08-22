@@ -178,24 +178,14 @@ class LocalTeacherApp:
                 shutil.rmtree(parent_store)
 
             if self.args.graph:
-                kuzu_dir = Path("./local_teacher_kuzu").resolve()
-                repo_root = Path(__file__).resolve().parent.parent
                 try:
-                    kuzu_dir.relative_to(repo_root)
-                except ValueError:
-                    print(
-                        "[-] Error de seguridad: kuzu_path está fuera del directorio del proyecto."
-                    )
-                    sys.exit(1)
-                else:
-                    for suffix in ["", ".wal", ".tmp", ".lck", ".lock"]:
-                        f = Path(str(kuzu_dir) + suffix)
-                        if f.exists() and not f.is_symlink():
-                            if f.is_dir():
-                                shutil.rmtree(f)
-                            else:
-                                f.unlink()
-                    print("[*] Base de datos de grafos limpiada por --recreate.")
+                    from local_teacher.graph import get_memgraph_client
+
+                    mg = get_memgraph_client()
+                    mg.clear_graph()
+                    print("[*] Base de datos de grafos (Memgraph) limpiada por --recreate.")
+                except Exception as e:
+                    print(f"[-] Error al limpiar Grafo de Conocimiento en Memgraph: {e}")
 
             try:
 
@@ -341,39 +331,43 @@ class LocalTeacherApp:
             self.chat_history.append(HumanMessage(content=consulta_actual))
             self.chat_history.append(AIMessage(content=respuesta_final))
 
-            # Loop
+            # Loop interactivo
             try:
                 print("\n")
-                consulta_actual = input(
-                    "Haz una pregunta de seguimiento (o 'salir' para terminar, '/web' para opciones): "
-                ).strip()
-                
-                if consulta_actual.lower() in ("salir", "exit", "quit"):
-                    break
+                while True:
+                    entrada = input(
+                        "Haz una pregunta de seguimiento (o 'salir' para terminar, '/web' para opciones): "
+                    ).strip()
                     
-                if consulta_actual.startswith("/web"):
-                    comando = consulta_actual[4:].strip()
-                    if comando.lower() in ("off", "false"):
-                        self.busqueda_web_alternativa = False
-                        self.web_filter = ""
-                        print("[*] Búsqueda web deshabilitada.")
-                    elif comando.lower() in ("on", "true", ""):
-                        self.busqueda_web_alternativa = True
-                        self.web_filter = ""
-                        print("[*] Búsqueda web habilitada (sin filtros).")
-                    elif comando.lower().startswith("filter "):
-                        self.busqueda_web_alternativa = True
-                        self.web_filter = comando[7:].strip()
-                        print(f"[*] Búsqueda web habilitada con filtro: {self.web_filter}")
-                    else:
-                        print("[-] Uso incorrecto de /web. Opciones:")
-                        print("    /web on          -> Activar búsqueda web")
-                        print("    /web off         -> Desactivar búsqueda web")
-                        print("    /web filter <x>  -> Activar con filtro (ej: /web filter site:edu)")
-                        
-                    consulta_actual = input("Ingresa tu pregunta ahora: ").strip()
-                    if not consulta_actual or consulta_actual.lower() in ("salir", "exit", "quit"):
-                        break
+                    if not entrada:
+                        continue
+
+                    if entrada.lower() in ("salir", "exit", "quit", "q"):
+                        return
+
+                    if entrada.startswith("/web"):
+                        comando = entrada[4:].strip()
+                        if comando.lower() in ("off", "false"):
+                            self.busqueda_web_alternativa = False
+                            self.web_filter = ""
+                            print("[*] Búsqueda web deshabilitada.")
+                        elif comando.lower() in ("on", "true", ""):
+                            self.busqueda_web_alternativa = True
+                            self.web_filter = ""
+                            print("[*] Búsqueda web habilitada (sin filtros).")
+                        elif comando.lower().startswith("filter "):
+                            self.busqueda_web_alternativa = True
+                            self.web_filter = comando[7:].strip()
+                            print(f"[*] Búsqueda web habilitada con filtro: {self.web_filter}")
+                        else:
+                            print("[-] Uso incorrecto de /web. Opciones:")
+                            print("    /web on          -> Activar búsqueda web")
+                            print("    /web off         -> Desactivar búsqueda web")
+                            print("    /web filter <x>  -> Activar con filtro (ej: /web filter site:edu)")
+                        continue
+
+                    consulta_actual = entrada
+                    break
             except (KeyboardInterrupt, EOFError):
                 break
 

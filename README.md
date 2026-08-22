@@ -11,7 +11,7 @@ El sistema procesa material didáctico estructurado, indexa su contenido en base
 - **Procesamiento de Documentos con Docling**: Extracción de texto, tablas en Markdown/CSV y figuras con leyendas desde archivos PDF, DOCX, PPTX, Markdown y JSONL. Normalización de fórmulas matemáticas en dos pasadas.
 - **Búsqueda Híbrida y Reranking**: Combinación de búsqueda vectorial densa con vectores dispersos BM25 en Qdrant, refinada mediante un reranker local con **FlashRank** (`ms-marco-MiniLM-L-12-v2`).
 - **Control de Fidelidad y Abstención Segura**: Clasificador binario Self-RAG para evitar alucinaciones. Incorpora un umbral de score mínimo y mensajes de _fallback_ estandarizados para indicar explícitamente cuándo el tema consultado no está en el material.
-- **Grafo de Conocimiento (GraphRAG)**: Extracción de tripletas entidad-relación y enriquecimiento de contexto mediante grafos conceptuales impulsados por KuzuDB.
+- **Grafo de Conocimiento (GraphRAG)**: Extracción de entidades con GLiNER y enriquecimiento conceptual con recorridos ponderados y detección de comunidades en **Memgraph MAGE**.
 - **Streaming de Respuestas**: Salida en consola progresiva (chunking artificial) para una experiencia de usuario natural y fluida mientras el LLM elabora respuestas extensas.
 - **Búsqueda Web Condicionada**: Si la información local no es suficiente, puede desencadenar consultas web a través de DuckDuckGo de manera segura (limitada a 2000 caracteres) para expandir su conocimiento.
 - **Optimización de Hardware**: Descarga automática de modelos de embeddings de la memoria tras vectorizar (`keep_alive=0`), puertos flexibles en Docker y soporte de caché semántico en Redis.
@@ -38,7 +38,7 @@ El sistema procesa material didáctico estructurado, indexa su contenido en base
    cp .env.example .env
    ```
 
-3. Inicia los servicios de infraestructura (Qdrant, Redis y Ollama):
+3. Inicia los servicios de infraestructura (Qdrant, Redis, Memgraph y Ollama):
    ```bash
    docker compose up -d
    ```

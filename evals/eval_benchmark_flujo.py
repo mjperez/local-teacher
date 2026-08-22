@@ -28,7 +28,6 @@ os.makedirs(OUTPUTS_DIR, exist_ok=True)
 # Rutas y colecciones aisladas para la prueba
 BENCHMARK_COLLECTION = "benchmark_eval_coleccion"
 BENCHMARK_PARENTS_DIR = os.path.join(OUTPUTS_DIR, ".benchmark_eval_parents")
-BENCHMARK_KUZU_DIR = os.path.join(OUTPUTS_DIR, "benchmark_eval_kuzu")
 BENCHMARK_CHECKPOINT_DB = os.path.join(OUTPUTS_DIR, "benchmark_eval_checkpoint.db")
 
 
@@ -41,7 +40,7 @@ def _ejecutar_prueba_completa_internal(reingestar: bool = False):
     print("=" * 80)
     print("INICIO DE PRUEBA DE EFICIENCIA, EFICACIA, RENDIMIENTO Y VELOCIDAD")
     print(f"Coleccion aislada: {BENCHMARK_COLLECTION}")
-    print(f"BD Grafo aislada:  {BENCHMARK_KUZU_DIR}")
+    print("Grafo aislado:      Memgraph MAGE")
     print("=" * 80)
 
     # 1. Cargar Modelos de LLM y Embeddings
@@ -62,7 +61,7 @@ def _ejecutar_prueba_completa_internal(reingestar: bool = False):
 
     ruta_ingesta = os.path.join(os.path.dirname(__file__), "..", "test_docs", "parsed", "inacap.jsonl")
     
-    if reingestar or not os.path.exists(BENCHMARK_KUZU_DIR):
+    if reingestar:
         print(f"[*] Cargando documentos desde {ruta_ingesta}...")
         t0_carga = time.time()
         docs = cargar_archivos(ruta_ingesta)
@@ -75,11 +74,11 @@ def _ejecutar_prueba_completa_internal(reingestar: bool = False):
         t_chunk = time.time() - t0_chunk
         print(f"  -> Fragmentacion completada: {len(chunks)} fragmentos en {t_chunk:.2f}s")
 
-        print("[*] Construyendo Grafo de Conocimiento (KuzuDB + GLiNER)...")
+        print("[*] Construyendo Grafo de Conocimiento (Memgraph MAGE + GLiNER)...")
         t0_grafo = time.time()
-        build_knowledge_graph(chunks, llm, output_path=BENCHMARK_KUZU_DIR)
+        build_knowledge_graph(chunks, llm)
         t_grafo = time.time() - t0_grafo
-        print(f"  -> Grafo KuzuDB construido en {t_grafo:.2f}s")
+        print(f"  -> Grafo Memgraph construido en {t_grafo:.2f}s")
 
         print(f"[*] Indexando en Qdrant (Coleccion: {BENCHMARK_COLLECTION})...")
         t0_index = time.time()
@@ -96,7 +95,7 @@ def _ejecutar_prueba_completa_internal(reingestar: bool = False):
         throughput_chunks = len(chunks) / tiempo_total_ingesta if tiempo_total_ingesta > 0 else 0
         num_chunks = len(chunks)
     else:
-        print(f"[+] Coleccion {BENCHMARK_COLLECTION} y Grafo {BENCHMARK_KUZU_DIR} ya indexados previamente.")
+        print(f"[+] Coleccion {BENCHMARK_COLLECTION} y Grafo Memgraph ya indexados previamente.")
         retriever = get_qdrant_retriever(
             embeddings=embeddings,
             collection_name=BENCHMARK_COLLECTION,
@@ -145,7 +144,6 @@ def _ejecutar_prueba_completa_internal(reingestar: bool = False):
             cache_store=cache_store,
             usar_critico=True,
             llm_critic=llm_critic,
-            kuzu_path=BENCHMARK_KUZU_DIR,
         )
 
         t0_query = time.time()
@@ -201,7 +199,7 @@ def _ejecutar_prueba_completa_internal(reingestar: bool = False):
     reporte = {
         "timestamp": time.time(),
         "coleccion": BENCHMARK_COLLECTION,
-        "grafo_bd": BENCHMARK_KUZU_DIR,
+        "grafo_bd": "Memgraph MAGE",
         "ingesta": {
             "num_fragmentos": num_chunks,
             "tiempo_total_seg": tiempo_total_ingesta,

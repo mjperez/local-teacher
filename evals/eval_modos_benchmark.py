@@ -25,13 +25,12 @@ OUTPUTS_DIR = os.path.join(os.path.dirname(__file__), "outputs")
 os.makedirs(OUTPUTS_DIR, exist_ok=True)
 
 BENCHMARK_COLLECTION = "benchmark_eval_coleccion"
-BENCHMARK_KUZU_DIR = os.path.join(OUTPUTS_DIR, "benchmark_eval_kuzu")
 
 
 def benchmark_modos():
     print("=" * 80)
     print("BENCHMARK COMPARATIVO DE MODOS: ULTRA-FAST vs FAST vs EXACT")
-    print(f"Coleccion: {BENCHMARK_COLLECTION} | Grafo: {BENCHMARK_KUZU_DIR}")
+    print(f"Coleccion: {BENCHMARK_COLLECTION} | Grafo: Memgraph MAGE")
     print("=" * 80)
 
     # Inicializar embeddings compartidos
@@ -104,7 +103,6 @@ def benchmark_modos():
                 busqueda_web_alternativa=False,
                 usar_critico=modo["usar_critico"],
                 llm_critic=modo["llm_critic"],
-                kuzu_path=BENCHMARK_KUZU_DIR,
                 llm_fast=modo.get("llm_fast"),
             )
 
