@@ -6,19 +6,10 @@ from langchain_core.retrievers import BaseRetriever
 from local_teacher.query.types import SemanticCacheProtocol
 
 from local_teacher.query.pipeline import PipelineConsulta
-from local_teacher.query.graph_search import obtener_contexto_grafo
-from local_teacher.query.reranker import recuperar_y_filtrar, get_ranker
-from local_teacher.query.prompts import formatear_documentos, crear_cadena_tutor
-from local_teacher.query.critic import evaluar_borrador
 
 _log = logging.getLogger(__name__)
 
-# Re-exportaciones compatibles con el código existente
-_obtener_contexto_grafo = obtener_contexto_grafo
-_recuperar_y_filtrar = recuperar_y_filtrar
-_formatear_documentos = formatear_documentos
-_crear_cadena_tutor = crear_cadena_tutor
-_evaluar_borrador = evaluar_borrador
+
 
 
 def stream_consulta(

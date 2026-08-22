@@ -57,8 +57,6 @@ logging.getLogger("docling").setLevel(logging.WARNING)
 logging.getLogger("transformers").setLevel(logging.ERROR)
 logging.getLogger("fastembed").setLevel(logging.ERROR)
 logging.getLogger("multipart").setLevel(logging.WARNING)
-
-logging.getLogger("multipart").setLevel(logging.WARNING)
 logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
 
 
@@ -66,7 +64,6 @@ def _print_sources(docs, respuesta_final=None):
     if not docs:
         return
 
-    import re
     citados = set()
     if respuesta_final:
         for match in re.finditer(r'\[([\d,\s]+)\]', respuesta_final):
