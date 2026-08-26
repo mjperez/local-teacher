@@ -53,24 +53,26 @@ Para procesar e indexar documentos ubicados en una carpeta:
 
 ```bash
 python -m local_teacher.cli \
-  --ingest test_docs \
-  --figuras --tablas \
-  --recreate
-```
-
-### Consultas Interactivas
-Para interactuar con el tutor en consola:
-
+### 1. Ingesta de Documentos
 ```bash
-python -m local_teacher.cli --query "¿Qué es un sistema inercial?"
+python -m local_teacher.cli ingest "ruta/a/tus/documentos"
+```
+_Ejemplo:_
+```bash
+python -m local_teacher.cli ingest test_docs \
+  --mode fast \
+  --workers 4
 ```
 
-El comando abrirá un diálogo interactivo donde puedes escribir preguntas de seguimiento manteniendo el contexto de la conversación.
+### 2. Chat y Consultas
+```bash
+python -m local_teacher.cli query "¿Qué es un sistema inercial?"
+```
 
-### Opciones de la Línea de Comandos
+## Opciones y Modos de Ejecución
 
-- `--ingest <ruta>`: Ruta al archivo o carpeta a procesar.
-- `--query <texto>`: Pregunta inicial para el tutor.
+- `ingest <ruta>`: Ruta al archivo o carpeta a procesar.
+- `query <texto>`: Pregunta inicial para el tutor.
 - `--figuras`: Extrae imágenes y diagramas a disco en formato PNG.
 - `--tablas`: Extrae tablas a formatos Markdown y CSV.
 - `--no-formulas`: Omite el modelo de enriquecimiento de fórmulas para acelerar la carga.

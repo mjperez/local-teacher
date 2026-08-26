@@ -12,6 +12,20 @@ if __name__ == "__main__":
     os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
     os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 
+import os
+import sys
+import warnings
+import argparse
+from dotenv import load_dotenv
+
+# Permite ejecutar con "python local_teacher/cli.py" directamente
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+if __name__ == "__main__":
+    os.environ["TOKENIZERS_PARALLELISM"] = "false"
+    os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
+    os.environ["HF_HUB_DISABLE_TELEMETRY"] = "1"
+    os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
+
     warnings.filterwarnings("ignore", message=".*torch_dtype.*")
     warnings.filterwarnings("ignore", message=".*loading weights.*")
     warnings.filterwarnings("ignore", module="gliner.*")
@@ -20,6 +34,7 @@ if __name__ == "__main__":
 
 from local_teacher.logging_config import setup_logging
 from local_teacher.app import LocalTeacherApp
+from local_teacher.repl import iniciar_repl
 
 def main() -> None:
     """Flujo mínimo de RAG: ingestar, indexar y responder."""
@@ -27,8 +42,8 @@ def main() -> None:
     setup_logging()
 
     parser = argparse.ArgumentParser(description="CLI simple de local-teacher")
-    parser.add_argument("--ingest", help="Archivo o directorio a ingerir")
-    parser.add_argument("--query", help="Pregunta para el tutor")
+    
+    # Global options
     parser.add_argument(
         "--figures",
         action=argparse.BooleanOptionalAction,
@@ -119,6 +134,14 @@ def main() -> None:
         "--ollama-host", default=os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434")
     )
 
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    
+    ingest_parser = subparsers.add_parser("ingest", help="Ingest documents")
+    ingest_parser.add_argument("path", help="Archivo o directorio a ingerir")
+    
+    query_parser = subparsers.add_parser("query", help="Query the tutor")
+    query_parser.add_argument("text", help="Pregunta inicial para el tutor")
+
     args = parser.parse_args()
 
     # Sobreescribir modelo y flags según el modo seleccionado
@@ -130,16 +153,14 @@ def main() -> None:
     elif args.mode == "exact":
         args.ollama_llm = "deepseek-r1:8b"
 
-    if not args.ingest and not args.query:
-        print("[-] Error: define --ingest y/o --query")
-        sys.exit(1)
-
-    app = LocalTeacherApp(args)
-    if args.ingest:
+    if args.command == "ingest":
+        args.ingest = args.path
+        app = LocalTeacherApp(args)
         app.ingest()
-
-    if args.query:
-        app.run_chat()
+    elif args.command == "query":
+        app = LocalTeacherApp(args)
+        app.responder_consulta(args.text)
+        iniciar_repl(app)
 
 
 if __name__ == "__main__":

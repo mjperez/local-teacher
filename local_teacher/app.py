@@ -204,7 +204,7 @@ class LocalTeacherApp:
                 print(f"\n[!] Error al guardar tiempo parcial: {e}")
             sys.exit(0)
 
-    def run_chat(self):
+    def responder_consulta(self, consulta_actual: str):
         print("[*] Conectando a Qdrant...")
         self.retriever = self.retriever or get_qdrant_retriever(self.embeddings)
         self.cache_store = (
@@ -213,73 +213,31 @@ class LocalTeacherApp:
             else None
         )
 
-        consulta_actual = self.args.query
-        while True:
-            print("\n[Tutor Local]: Procesando tu pregunta...")
-            pipeline = PipelineConsulta(
-                retriever=self.retriever,
-                llm=self.llm,
-                busqueda_web_alternativa=self.busqueda_web_alternativa,
-                web_filter=self.web_filter,
-                cache_store=self.cache_store,
-                usar_critico=self.args.critic,
-                llm_critic=self.llm_critic,
-                llm_fast=self.llm_fast,
-            )
-            res_gen = pipeline.ejecutar(consulta_actual, self.chat_history, _progreso_print)
+        print("\n[Tutor Local]: Procesando tu pregunta...")
+        pipeline = PipelineConsulta(
+            retriever=self.retriever,
+            llm=self.llm,
+            busqueda_web_alternativa=self.busqueda_web_alternativa,
+            web_filter=self.web_filter,
+            cache_store=self.cache_store,
+            usar_critico=self.args.critic,
+            llm_critic=self.llm_critic,
+            llm_fast=self.llm_fast,
+        )
+        res_gen = pipeline.ejecutar(consulta_actual, self.chat_history, _progreso_print)
 
-            respuesta_final = ""
-            context_docs = []
+        respuesta_final = ""
+        context_docs = []
 
-            for chunk in res_gen:
-                if "answer" in chunk:
-                    respuesta_final += chunk["answer"]
-                    print(chunk["answer"], end="", flush=True)
-                if "context_docs" in chunk:
-                    context_docs = chunk["context_docs"]
+        for chunk in res_gen:
+            if "answer" in chunk:
+                respuesta_final += chunk["answer"]
+                print(chunk["answer"], end="", flush=True)
+            if "context_docs" in chunk:
+                context_docs = chunk["context_docs"]
 
-            _print_sources(context_docs, respuesta_final=respuesta_final)
+        _print_sources(context_docs, respuesta_final=respuesta_final)
 
-            # Guardar en memoria
-            self.chat_history.append(HumanMessage(content=consulta_actual))
-            self.chat_history.append(AIMessage(content=respuesta_final))
-
-            # Loop interactivo
-            try:
-                print("\n")
-                while True:
-                    entrada = input(
-                        "Haz una pregunta de seguimiento (o 'salir' para terminar, '/web' para opciones): "
-                    ).strip()
-                    
-                    if not entrada:
-                        continue
-
-                    if entrada.lower() in ("salir", "exit", "quit", "q"):
-                        return
-
-                    if entrada.startswith("/web"):
-                        comando = entrada[4:].strip()
-                        if comando.lower() in ("off", "false"):
-                            self.busqueda_web_alternativa = False
-                            self.web_filter = ""
-                            print("[*] Búsqueda web deshabilitada.")
-                        elif comando.lower() in ("on", "true", ""):
-                            self.busqueda_web_alternativa = True
-                            self.web_filter = ""
-                            print("[*] Búsqueda web habilitada (sin filtros).")
-                        elif comando.lower().startswith("filter "):
-                            self.busqueda_web_alternativa = True
-                            self.web_filter = comando[7:].strip()
-                            print(f"[*] Búsqueda web habilitada con filtro: {self.web_filter}")
-                        else:
-                            print("[-] Uso incorrecto de /web. Opciones:")
-                            print("    /web on          -> Activar búsqueda web")
-                            print("    /web off         -> Desactivar búsqueda web")
-                            print("    /web filter <x>  -> Activar con filtro (ej: /web filter site:edu)")
-                        continue
-
-                    consulta_actual = entrada
-                    break
-            except (KeyboardInterrupt, EOFError):
-                break
+        # Guardar en memoria
+        self.chat_history.append(HumanMessage(content=consulta_actual))
+        self.chat_history.append(AIMessage(content=respuesta_final))

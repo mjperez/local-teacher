@@ -66,7 +66,7 @@ def crear_cadena_tutor(
         "\nINSTRUCCIONES:\n"
         "1. Basa tu explicación en los documentos recuperados y las conexiones conceptuales del grafo. Puedes resumir y estructurar la información para enseñar claramente.\n"
         "2. Si el contexto contiene información sobre el tema, desarróllala detallando lo que explican los documentos y cita las fuentes con corchetes (ej. '[1]', '[2]').\n"
-        "3. Si los documentos y el grafo no contienen absolutamente ninguna mención del tema consultado, responde EXCLUSIVAMENTE: 'Este tema no está cubierto en el material cargado.'\n"
+        "3. Si los documentos y el grafo no contienen absolutamente ninguna mención del tema consultado, responde EXCLUSIVAMENTE: 'NO_INFO_EN_CONTEXTO'\n"
         "4. Si la información local es insuficiente y está activa la búsqueda web, responde: REQUIRE_WEB_SEARCH."
     )
 

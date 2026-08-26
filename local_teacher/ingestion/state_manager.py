@@ -108,6 +108,20 @@ class StateManager:
         except Exception as e:
             _log.warning("Error al guardar lote de Qdrant: %s", e)
 
+    def mark_qdrant_batches(self, batch_ids: list[int] | set[int]) -> None:
+        """Registra múltiples lotes de Qdrant como completados."""
+        if not batch_ids:
+            return
+        try:
+            with self._obtener_conexion() as conn:
+                conn.executemany(
+                    "INSERT OR IGNORE INTO qdrant_batches (batch_id) VALUES (?)",
+                    [(bid,) for bid in batch_ids],
+                )
+                conn.commit()
+        except Exception as e:
+            _log.warning("Error al guardar lotes de Qdrant: %s", e)
+
     # Fragmentos del Grafo
     def get_graph_chunks(self) -> set[int]:
         """Obtiene los índices de fragmentos ya procesados en el grafo."""

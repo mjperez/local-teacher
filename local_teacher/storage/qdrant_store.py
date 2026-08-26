@@ -67,7 +67,7 @@ def get_qdrant_retriever(
             collection_name=collection,
         )
 
-    retriever = ParentDocumentRetriever(
+    recuperador = ParentDocumentRetriever(
         vectorstore=vectorstore,
         docstore=store,
         child_splitter=child_splitter,
@@ -99,7 +99,7 @@ def get_qdrant_retriever(
 
         @retry(wait=wait_exponential(multiplier=1, min=1, max=10), stop=stop_after_attempt(5))
         def _ingestar_lote_seguro(lote_docs):
-            retriever.add_documents(lote_docs, ids=None)
+            recuperador.add_documents(lote_docs, ids=None)
 
         for i in range(0, len(documentos), batch_size):
             lote_num = (i // batch_size) + 1
@@ -116,7 +116,7 @@ def get_qdrant_retriever(
             
         print()  # salto de línea al terminar
 
-    return retriever
+    return recuperador
 
 
 # Alias para compatibilidad
