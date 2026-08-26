@@ -12,7 +12,7 @@ from langchain_core.output_parsers import StrOutputParser
 
 from local_teacher.factory import obtener_modelos, obtener_llm_critico
 from local_teacher.storage.qdrant_store import get_qdrant_retriever
-from local_teacher.query.retriever import ejecutar_consulta
+from local_teacher.query.pipeline import PipelineConsulta
 
 logging.basicConfig(level=logging.WARNING)
 _log = logging.getLogger(__name__)
@@ -91,9 +91,15 @@ def main():
             print(f"Q: {q}")
             print(f"{'='*60}")
             try:
-                res = ejecutar_consulta(retriever, llm, q, usar_critico=False)
-                ans = res["answer"]
-                docs = res["context_docs"]
+                pipeline = PipelineConsulta(retriever=retriever, llm=llm, usar_critico=False)
+                res_gen = pipeline.ejecutar(q)
+                ans = ""
+                docs = []
+                for chunk in res_gen:
+                    if "answer" in chunk:
+                        ans += chunk["answer"]
+                    if "context_docs" in chunk:
+                        docs = chunk["context_docs"]
                 
                 context_str = "\n\n".join([d.page_content for d in docs])
                 

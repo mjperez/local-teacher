@@ -13,13 +13,14 @@ langchain-classic
 langchain-ollama
 langchain-openai
 
-# Base de Datos Vectorial
+# Base de Datos Vectorial y Grafos
 langchain-qdrant
 fastembed
-kuzu
+neo4j>=5.18.0
+
 
 # Herramientas Web
-duckduckgo-search
+langchain-duckduckgo
 
 # Re-ranking
 flashrank
@@ -43,4 +44,5 @@ opencv-python
 
 # Utilidades y Caché
 redis
+langchain-redis
 pydantic

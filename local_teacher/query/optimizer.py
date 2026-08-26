@@ -137,7 +137,7 @@ def reescribir_consulta(
                 "system",
                 "Eres un bibliotecario y tutor experto. Tu tarea es optimizar la pregunta del estudiante para buscar en una base de datos vectorial y de grafos.\n"
                 "Instrucciones:\n"
-                "1. Transforma pronombres y referencias vagas en una consulta técnica autocontenida usando el historial.\n"
+                "1. Escribe una oración clara y descriptiva en lenguaje natural para la búsqueda. NUNCA generes código SQL, Cypher ni consultas técnicas de bases de datos.\n"
                 "2. Expande términos coloquiales, acrónimos y modismos a conceptos formales (ej. 'bd' -> 'base de datos').\n"
                 "3. Extrae un capítulo solo si se solicita de manera explícita.\n"
                 "4. Extrae los nombres de entidades y conceptos técnicos más relevantes.\n"

@@ -102,7 +102,16 @@ def cargar_archivos(
     items_a_procesar = []
     item_hashes = {}
 
-    items_validos = [item for item in items if item.is_file() and not item.name.endswith("_toc.txt")]
+    SUPPORTED_EXTS = {".txt", ".md", ".pdf", ".docx", ".pptx", ".mp4", ".mkv", ".jsonl"}
+    IGNORED_DIRS = {"parsed", "figures", "figuras", "tablas", ".local_teacher_parents", "__pycache__", ".git", ".agents", "evals"}
+
+    items_validos = [
+        item for item in items
+        if item.is_file()
+        and not item.name.endswith("_toc.txt")
+        and not any(part in IGNORED_DIRS for part in item.parts)
+        and item.suffix.lower() in SUPPORTED_EXTS
+    ]
 
     for item in items_validos:
         file_hash = _calcular_hash(item)

@@ -19,14 +19,16 @@ class StateManager:
         else:
             self.db_path = Path(db_path)
             
+        self._conn = None
         self._init_db()
 
     def _obtener_conexion(self) -> sqlite3.Connection:
-        """Crea una conexión con timeout extendido y modo WAL activado."""
-        conn = sqlite3.connect(str(self.db_path), timeout=30.0)
-        conn.execute("PRAGMA journal_mode=WAL;")
-        conn.execute("PRAGMA synchronous=NORMAL;")
-        return conn
+        """Crea una conexión persistente con timeout extendido y modo WAL activado."""
+        if self._conn is None:
+            self._conn = sqlite3.connect(str(self.db_path), timeout=30.0, check_same_thread=False)
+            self._conn.execute("PRAGMA journal_mode=WAL;")
+            self._conn.execute("PRAGMA synchronous=NORMAL;")
+        return self._conn
 
     def _init_db(self) -> None:
         """Inicializa las tablas necesarias si no existen."""
@@ -106,6 +108,20 @@ class StateManager:
         except Exception as e:
             _log.warning("Error al guardar lote de Qdrant: %s", e)
 
+    def mark_qdrant_batches(self, batch_ids: list[int] | set[int]) -> None:
+        """Registra múltiples lotes de Qdrant como completados."""
+        if not batch_ids:
+            return
+        try:
+            with self._obtener_conexion() as conn:
+                conn.executemany(
+                    "INSERT OR IGNORE INTO qdrant_batches (batch_id) VALUES (?)",
+                    [(bid,) for bid in batch_ids],
+                )
+                conn.commit()
+        except Exception as e:
+            _log.warning("Error al guardar lotes de Qdrant: %s", e)
+
     # Fragmentos del Grafo
     def get_graph_chunks(self) -> set[int]:
         """Obtiene los índices de fragmentos ya procesados en el grafo."""
@@ -129,6 +145,20 @@ class StateManager:
                 conn.commit()
         except Exception as e:
             _log.warning("Error al guardar fragmento del grafo: %s", e)
+
+    def mark_graph_chunks_batch(self, chunk_indices: list[int] | set[int]) -> None:
+        """Registra múltiples fragmentos del grafo como completados en una sola transacción."""
+        if not chunk_indices:
+            return
+        try:
+            with self._obtener_conexion() as conn:
+                conn.executemany(
+                    "INSERT OR IGNORE INTO graph_chunks (chunk_index) VALUES (?)",
+                    [(idx,) for idx in chunk_indices],
+                )
+                conn.commit()
+        except Exception as e:
+            _log.warning("Error al guardar lote de fragmentos del grafo: %s", e)
 
     def clear(self) -> None:
         """Limpia todos los checkpoints registrados eliminando las filas de las tablas."""

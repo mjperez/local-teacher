@@ -57,19 +57,51 @@ services:
       ollama:
         condition: service_healthy
     command: >
-      sh -c " echo 'Descargando nomic-embed-text...' && \
-      curl -s -X POST http://ollama:11434/api/pull -d '{\"name\": \"nomic-embed-text\"}' && \
-      echo '\nDescargando deepseek-r1:8b...' && \
-      curl -s -X POST http://ollama:11434/api/pull -d '{\"name\": \"deepseek-r1:8b\"}' && \
+      sh -c " echo '\nDescargando deepseek-r1:8b...' && \
+      curl -sf -X POST http://ollama:11434/api/pull -d '{\"name\": \"deepseek-r1:8b\"}' && \
       echo '\nDescargando llama3.2...' && \
-      curl -s -X POST http://ollama:11434/api/pull -d '{\"name\": \"llama3.2\"}' && \
+      curl -sf -X POST http://ollama:11434/api/pull -d '{\"name\": \"llama3.2\"}' && \
       echo '\nDescargando granite-embedding:278m...' && \
-      curl -s -X POST http://ollama:11434/api/pull -d '{\"name\": \"granite-embedding:278m\"}' && \
+      curl -sf -X POST http://ollama:11434/api/pull -d '{\"name\": \"granite-embedding:278m\"}' && \
       echo '\nDescargando granite3-guardian:2b...' && \
-      curl -s -X POST http://ollama:11434/api/pull -d '{\"name\": \"granite3-guardian:2b\"}' && \
+      curl -sf -X POST http://ollama:11434/api/pull -d '{\"name\": \"granite3-guardian:2b\"}' && \
       echo '\n¡Modelos descargados exitosamente!' "
+
+  memgraph:
+    image: memgraph/memgraph-mage:latest
+    container_name: local_teacher_memgraph
+    ports:
+      - '7687:7687'
+    environment:
+      - MEMGRAPH="--log-level=WARNING"
+    volumes:
+      - memgraph_storage:/var/lib/memgraph
+    restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', "bash -c 'exec 3<>/dev/tcp/127.0.0.1/7687'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  memgraph-lab:
+    image: memgraph/lab:latest
+    container_name: local_teacher_memgraph_lab
+    ports:
+      - '3000:3000'
+    environment:
+      - QUICK_CONNECT_MG_HOST=memgraph
+      - QUICK_CONNECT_MG_PORT=7687
+    depends_on:
+      - memgraph
+    restart: unless-stopped
 
 volumes:
   qdrant_storage:
   ollama_storage:
   redis_storage:
+  memgraph_storage:
+
+networks:
+  default:
+    name: local_teacher_network

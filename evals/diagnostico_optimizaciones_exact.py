@@ -10,7 +10,6 @@ import os
 
 BENCHMARK_COLLECTION = "benchmark_eval_coleccion"
 OUTPUTS_DIR = os.path.join(os.path.dirname(__file__), "outputs")
-BENCHMARK_KUZU_DIR = os.path.join(OUTPUTS_DIR, "benchmark_eval_kuzu")
 
 def test_diagnostico():
     print("=" * 80)
@@ -44,7 +43,6 @@ def test_diagnostico():
         busqueda_web_alternativa=False,
         usar_critico=True,
         llm_critic=llm_critic,
-        kuzu_path=BENCHMARK_KUZU_DIR,
     )
 
     t0_q = time.time()

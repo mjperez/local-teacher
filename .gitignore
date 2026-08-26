@@ -15,11 +15,10 @@ logs/
 evals/outputs/
 data/
 .qodo
+scripts/
 
 # Generated DBs and graph files
 .local_teacher_parents/
-local_teacher_kuzu/
-local_teacher_kuzu*
 .*_checkpoint.json
 local_teacher_qdrant/
 checkpoint.db*

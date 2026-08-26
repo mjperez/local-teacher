@@ -5,7 +5,7 @@ FROM python:3.11-slim
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
 
-# Instalamos dependencias del sistema requeridas por OpenCV (EasyOCR), Whisper (ffmpeg) y Kuzu/Docling
+# Instalamos dependencias del sistema requeridas por OpenCV (EasyOCR), Whisper (ffmpeg) y Docling
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     libsm6 \

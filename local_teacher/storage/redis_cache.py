@@ -9,7 +9,7 @@ _log = logging.getLogger(__name__)
 
 class RedisCacheStore:
     """
-    Caché Semántico usando Redis Stack (RediSearch) y langchain_community.vectorstores.Redis.
+    Caché Semántico usando Redis Stack (RediSearch) y langchain_redis.RedisVectorStore.
     """
     INDEX_PREFIX = "local_teacher_"
 
@@ -21,11 +21,14 @@ class RedisCacheStore:
             import redis
             r = redis.Redis.from_url(self.redis_url)
             r.ping()
-            from langchain_community.vectorstores import Redis
-            self.vectorstore = Redis(
-                redis_url=self.redis_url,
+            from langchain_redis import RedisConfig, RedisVectorStore
+            config = RedisConfig(
                 index_name=self.index_name,
-                embedding=self.embeddings,
+                redis_url=self.redis_url,
+            )
+            self.vectorstore = RedisVectorStore(
+                embeddings=self.embeddings,
+                config=config,
             )
             self.connected = True
             _log.info("[+] Conectado exitosamente a Redis Stack para Semantic Cache.")
@@ -84,13 +87,13 @@ class RedisCacheStore:
             )
             return False
         try:
-            from langchain_community.vectorstores import Redis
             _log.warning(
                 "[!] Eliminando índice Redis '%s' en %s. Esta operación es irreversible.",
                 self.index_name,
                 self.redis_url,
             )
-            Redis.drop_index(index_name=self.index_name, delete_documents=True, redis_url=self.redis_url)
+            if hasattr(self.vectorstore, "index") and hasattr(self.vectorstore.index, "delete"):
+                self.vectorstore.index.delete(drop=True)
             _log.info("[*] Índice de Caché Semántico (Redis) eliminado correctamente.")
             return True
         except Exception as e:
