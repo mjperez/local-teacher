@@ -118,10 +118,29 @@ class SupervisorLLM:
             else:
                 self._progreso(3, 4, "Generando respuesta...", saltar_linea=True)
                 borrador = ""
+                es_comando_control = False
+                buffer_flushed = False
                 for token_chunk in cadena_tutor.stream(args_invoke):
                     content = token_chunk.content if hasattr(token_chunk, "content") else str(token_chunk)
                     borrador += content
-                    yield {"answer": content}
+                    
+                    if not buffer_flushed:
+                        if len(borrador) < 25:
+                            if borrador.strip() in "NO_INFO_EN_CONTEXTO" or borrador.strip() in "REQUIRE_WEB_SEARCH" or borrador.strip() in "<think>":
+                                continue
+                            elif "NO_INFO_EN_CONTEXTO".startswith(borrador.strip()) or "REQUIRE_WEB_SEARCH".startswith(borrador.strip()) or "<think>".startswith(borrador.strip()):
+                                continue
+                            
+                        # Si llegamos aca, descartamos que sea comando control, flusheamos el buffer
+                        if borrador.strip().startswith("NO_INFO") or borrador.strip().startswith("REQUIRE_WEB") or borrador.strip().startswith("<think>"):
+                            es_comando_control = True
+                        
+                        buffer_flushed = True
+                        if not es_comando_control:
+                            yield {"answer": borrador}
+                    else:
+                        if not es_comando_control:
+                            yield {"answer": content}
 
             tracker.add_latency(f"Generacion_LLM_Intento_{intento}", t_gen_start)
 
