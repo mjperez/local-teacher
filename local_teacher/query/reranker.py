@@ -32,7 +32,7 @@ def recuperar_y_filtrar(
         for entidad in entidades_filtro:
             if not entidad:
                 continue
-            retriever.search_kwargs = {"k": 15}
+            retriever.search_kwargs = {**retriever.search_kwargs, "k": 15}
             res_entidad = retriever.invoke(str(entidad))
             for d in res_entidad:
                 h = hash(d.page_content)
@@ -41,7 +41,7 @@ def recuperar_y_filtrar(
                     vistos_hash.add(h)
 
     # Búsqueda con la consulta global enriquecida
-    retriever.search_kwargs = {"k": 25}
+    retriever.search_kwargs = {**retriever.search_kwargs, "k": 25}
     res_completa = retriever.invoke(consulta_optimizada)
     for d in res_completa:
         h = hash(d.page_content)
