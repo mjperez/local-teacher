@@ -37,3 +37,6 @@ benchmark_*
 
 # Ignore large test docs
 test_docs/
+
+# Ignore Graphify output
+graphify-out/

@@ -15,7 +15,7 @@ def obtener_contexto_grafo(
     
     Aprovecha la búsqueda bidireccional ponderada y devuelve el contexto estructurado y las palabras clave.
     """
-    contexto_grafo = "(No se detectaron entidades o no hay grafo disponible)"
+    contexto_grafo = ""
     palabras_clave_grafo: list[str] = []
 
     if not entidades_filtro:
@@ -29,16 +29,25 @@ def obtener_contexto_grafo(
     try:
         memgraph = client or get_memgraph_client()
 
+        # 2-hop search con bono por coincidencia de comunidad
         query = """
-        MATCH (a:Entity)-[r:Rel]-(b:Entity)
+        MATCH (a:Entity)
         WHERE ANY(ent IN $entidades WHERE toLower(a.name) CONTAINS toLower(ent))
-        RETURN a.name AS source, 
-               COALESCE(r.type, 'CO_OCCURS_WITH') AS rel, 
-               b.name AS target, 
-               COALESCE(r.weight, 1) AS weight,
-               b.community AS community
-        ORDER BY weight DESC
+        WITH a LIMIT 10
+        MATCH (a)-[r1]-(b:Entity)
+        WITH a, r1, b ORDER BY r1.weight DESC LIMIT 50
+        MATCH (b)-[r2]-(c:Entity)
+        WHERE a <> c
+        WITH a, r1, b, r2, c,
+             (COALESCE(r1.weight, 1) + COALESCE(r2.weight, 1)) * (CASE WHEN a.community = b.community AND b.community = c.community AND a.community IS NOT NULL THEN 1.5 ELSE 1.0 END) AS total_weight
+        ORDER BY total_weight DESC
         LIMIT $limit
+        RETURN a.name AS source, 
+               type(r1) AS rel1, 
+               b.name AS intermediate, 
+               type(r2) AS rel2, 
+               c.name AS target, 
+               total_weight
         """
         
         records = memgraph.execute_query(
@@ -54,20 +63,21 @@ def obtener_contexto_grafo(
 
         for rec in records:
             source = rec.get("source")
-            rel = rec.get("rel")
+            rel1 = rec.get("rel1")
+            inter = rec.get("intermediate")
+            rel2 = rec.get("rel2")
             target = rec.get("target")
-            weight = rec.get("weight", 1)
+            weight = rec.get("total_weight", 1)
 
             if source:
                 nodos_vistos.add(source)
+            if inter:
+                nodos_vistos.add(inter)
             if target:
                 nodos_vistos.add(target)
 
-            if source and target:
-                if weight and weight > 1:
-                    conexiones.append(f"- {source} [{rel} (fuerza: {weight})] {target}")
-                else:
-                    conexiones.append(f"- {source} [{rel}] {target}")
+            if source and inter and target:
+                conexiones.append(f"- {source} [{rel1}] {inter} [{rel2}] {target} (peso: {weight:.1f})")
 
         if conexiones:
             # Eliminar posibles duplicados preservando el orden por peso

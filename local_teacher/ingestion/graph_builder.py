@@ -33,6 +33,22 @@ def _is_valid_entity(text: str) -> bool:
         return False
     return True
 
+def _get_rel_type(label1: str, label2: str) -> str:
+    pair = tuple(sorted([label1, label2]))
+    mapping = {
+        ("Algorithm", "Metric"): "EVALUATED_BY",
+        ("Algorithm", "Concept"): "IMPLEMENTS",
+        ("Process", "Tool"): "USES_TOOL",
+        ("Process", "Technology"): "USES_TECH",
+        ("Concept", "Concept"): "RELATED_TO",
+        ("Person", "Organization"): "AFFILIATED_WITH",
+        ("Organization", "Technology"): "DEVELOPS",
+        ("Concept", "Tool"): "IMPLEMENTED_BY",
+        ("Algorithm", "Tool"): "IMPLEMENTED_IN",
+        ("Concept", "Technology"): "USES",
+    }
+    return mapping.get(pair, "CO_OCCURS_WITH")
+
 
 # Inicialización Lazy de GLiNER
 _gliner_model = None
@@ -121,21 +137,27 @@ def build_knowledge_graph(
             all_batch_edges = []
 
             for idx, entities, text in zip(batch_indices, all_entities, batch_texts):
-                nombres = set()
+                nombres_to_label = {}
                 for e in entities:
                     ent_text = e["text"]
                     if _is_valid_entity(ent_text):
-                        nombres.add(ent_text.strip().title())
-                nombres_list = list(nombres)
+                        title_text = ent_text.strip().title()
+                        if title_text not in nombres_to_label:
+                            nombres_to_label[title_text] = e["label"]
+                nombres_list = list(nombres_to_label.keys())
                 
-                # Generar pares de co-ocurrencia
+                # Generar pares de co-ocurrencia con relaciones semánticas
                 for j in range(len(nombres_list)):
                     for k in range(j + 1, len(nombres_list)):
-                        all_batch_nodes.add(nombres_list[j])
-                        all_batch_nodes.add(nombres_list[k])
+                        n1 = nombres_list[j]
+                        n2 = nombres_list[k]
+                        rel_type = _get_rel_type(nombres_to_label[n1], nombres_to_label[n2])
+                        all_batch_nodes.add(n1)
+                        all_batch_nodes.add(n2)
                         all_batch_edges.append({
-                            "source": nombres_list[j],
-                            "target": nombres_list[k],
+                            "source": n1,
+                            "target": n2,
+                            "rel": rel_type
                         })
 
             try:
@@ -147,14 +169,20 @@ def build_knowledge_graph(
                     )
 
                 if all_batch_edges:
-                    memgraph.execute_write(
-                        "UNWIND $edges AS e "
-                        "MATCH (a:Entity {name: e.source}), (b:Entity {name: e.target}) "
-                        "MERGE (a)-[r:Rel {type: 'CO_OCCURS_WITH'}]->(b) "
-                        "ON CREATE SET r.weight = 1 "
-                        "ON MATCH SET r.weight = r.weight + 1",
-                        {"edges": all_batch_edges},
-                    )
+                    from collections import defaultdict
+                    edges_by_rel = defaultdict(list)
+                    for edge in all_batch_edges:
+                        edges_by_rel[edge["rel"]].append({"source": edge["source"], "target": edge["target"]})
+                        
+                    for rel_type, edges in edges_by_rel.items():
+                        memgraph.execute_write(
+                            f"UNWIND $edges AS e "
+                            f"MATCH (a:Entity {{name: e.source}}), (b:Entity {{name: e.target}}) "
+                            f"MERGE (a)-[r:`{rel_type}`]->(b) "
+                            f"ON CREATE SET r.weight = 1 "
+                            f"ON MATCH SET r.weight = r.weight + 1",
+                            {"edges": edges},
+                        )
                     aristas_creadas += len(all_batch_edges)
 
                 processed_indices.update(batch_indices)
