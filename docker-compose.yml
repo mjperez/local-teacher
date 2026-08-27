@@ -73,7 +73,7 @@ services:
     ports:
       - '7687:7687'
     environment:
-      - MEMGRAPH="--log-level=WARNING"
+      - MEMGRAPH=--bolt-server-name-for-init=Neo4j/ --log-level=WARNING
     volumes:
       - memgraph_storage:/var/lib/memgraph
     restart: unless-stopped
