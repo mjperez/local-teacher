@@ -31,17 +31,21 @@ def obtener_contexto_grafo(
 
         # 2-hop search con bono por coincidencia de comunidad
         query = """
-        MATCH (a:Entity)-[r1:Rel]-(b:Entity)-[r2:Rel]-(c:Entity)
+        MATCH (a:Entity)
         WHERE ANY(ent IN $entidades WHERE toLower(a.name) CONTAINS toLower(ent))
-          AND a <> c
+        WITH a LIMIT 10
+        MATCH (a)-[r1]-(b:Entity)
+        WITH a, r1, b ORDER BY r1.weight DESC LIMIT 50
+        MATCH (b)-[r2]-(c:Entity)
+        WHERE a <> c
         WITH a, r1, b, r2, c,
-             (COALESCE(r1.weight, 1) + COALESCE(r2.weight, 1)) * (CASE WHEN a.community = c.community AND a.community IS NOT NULL THEN 1.5 ELSE 1.0 END) AS total_weight
+             (COALESCE(r1.weight, 1) + COALESCE(r2.weight, 1)) * (CASE WHEN a.community = b.community AND b.community = c.community AND a.community IS NOT NULL THEN 1.5 ELSE 1.0 END) AS total_weight
         ORDER BY total_weight DESC
         LIMIT $limit
         RETURN a.name AS source, 
-               COALESCE(r1.type, 'RELATED_TO') AS rel1, 
+               type(r1) AS rel1, 
                b.name AS intermediate, 
-               COALESCE(r2.type, 'RELATED_TO') AS rel2, 
+               type(r2) AS rel2, 
                c.name AS target, 
                total_weight
         """

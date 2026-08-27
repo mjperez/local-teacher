@@ -141,7 +141,9 @@ def build_knowledge_graph(
                 for e in entities:
                     ent_text = e["text"]
                     if _is_valid_entity(ent_text):
-                        nombres_to_label[ent_text.strip().title()] = e["label"]
+                        title_text = ent_text.strip().title()
+                        if title_text not in nombres_to_label:
+                            nombres_to_label[title_text] = e["label"]
                 nombres_list = list(nombres_to_label.keys())
                 
                 # Generar pares de co-ocurrencia con relaciones semánticas
@@ -167,14 +169,20 @@ def build_knowledge_graph(
                     )
 
                 if all_batch_edges:
-                    memgraph.execute_write(
-                        "UNWIND $edges AS e "
-                        "MATCH (a:Entity {name: e.source}), (b:Entity {name: e.target}) "
-                        "MERGE (a)-[r:Rel {type: e.rel}]->(b) "
-                        "ON CREATE SET r.weight = 1 "
-                        "ON MATCH SET r.weight = r.weight + 1",
-                        {"edges": all_batch_edges},
-                    )
+                    from collections import defaultdict
+                    edges_by_rel = defaultdict(list)
+                    for edge in all_batch_edges:
+                        edges_by_rel[edge["rel"]].append({"source": edge["source"], "target": edge["target"]})
+                        
+                    for rel_type, edges in edges_by_rel.items():
+                        memgraph.execute_write(
+                            f"UNWIND $edges AS e "
+                            f"MATCH (a:Entity {{name: e.source}}), (b:Entity {{name: e.target}}) "
+                            f"MERGE (a)-[r:`{rel_type}`]->(b) "
+                            f"ON CREATE SET r.weight = 1 "
+                            f"ON MATCH SET r.weight = r.weight + 1",
+                            {"edges": edges},
+                        )
                     aristas_creadas += len(all_batch_edges)
 
                 processed_indices.update(batch_indices)
