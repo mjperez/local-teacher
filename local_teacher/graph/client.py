@@ -77,16 +77,22 @@ class MemgraphClient:
     def run_louvain(self) -> None:
         """Ejecuta el algoritmo Louvain de MAGE para asignar IDs de comunidad a los nodos."""
         _log.info("Ejecutando detección de comunidades (Louvain) con MAGE...")
-        query = (
-            "CALL louvain.get() "
-            "YIELD node, community_id "
-            "SET node.community = community_id"
-        )
-        try:
-            self.execute_write(query)
-            _log.info("Comunidades Louvain asignadas exitosamente a los nodos del grafo.")
-        except Exception as e:
-            _log.warning("No se pudo ejecutar el algoritmo Louvain en Memgraph MAGE: %s", e)
+        
+        # MAGE < 1.3 usa louvain.get(), MAGE >= 1.3 usa community_detection.get()
+        procedures = [
+            "CALL community_detection.get() YIELD node, community_id SET node.community = community_id",
+            "CALL louvain.get() YIELD node, community_id SET node.community = community_id",
+        ]
+        
+        for query in procedures:
+            try:
+                self.execute_write(query)
+                _log.info("Comunidades Louvain asignadas exitosamente a los nodos del grafo.")
+                return
+            except Exception:
+                continue
+        
+        _log.warning("No se pudo ejecutar Louvain: ni community_detection.get() ni louvain.get() están disponibles en MAGE.")
 
     def health_check(self) -> bool:
         """Verifica la conectividad con el servidor Memgraph."""

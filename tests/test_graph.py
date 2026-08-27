@@ -25,20 +25,22 @@ def test_memgraph_client_query():
 def test_obtener_contexto_grafo_con_memgraph():
     mock_client = MagicMock()
     mock_client.execute_query.return_value = [
-        {"source": "Sensor", "rel": "CO_OCCURS_WITH", "target": "Actuador", "weight": 4, "community": 0},
-        {"source": "Sensor", "rel": "CO_OCCURS_WITH", "target": "Microcontrolador", "weight": 2, "community": 0},
+        {"source": "Sensor", "rel1": "USES_TOOL", "intermediate": "Arduino", "rel2": "CO_OCCURS_WITH", "target": "Actuador", "total_weight": 6.0},
+        {"source": "Sensor", "rel1": "CO_OCCURS_WITH", "intermediate": "Placa", "rel2": "IMPLEMENTS", "target": "Microcontrolador", "total_weight": 3.0},
     ]
 
     contexto, keywords = obtener_contexto_grafo(["sensor"], client=mock_client)
 
-    assert "Sensor [CO_OCCURS_WITH (fuerza: 4)] Actuador" in contexto
-    assert "Sensor [CO_OCCURS_WITH (fuerza: 2)] Microcontrolador" in contexto
+    assert "Sensor [USES_TOOL] Arduino [CO_OCCURS_WITH] Actuador (peso: 6.0)" in contexto
+    assert "Sensor [CO_OCCURS_WITH] Placa [IMPLEMENTS] Microcontrolador (peso: 3.0)" in contexto
     assert "Sensor" in keywords
+    assert "Arduino" in keywords
     assert "Actuador" in keywords
+    assert "Placa" in keywords
     assert "Microcontrolador" in keywords
 
 
 def test_obtener_contexto_grafo_vacio():
     contexto, keywords = obtener_contexto_grafo([])
-    assert "(No se detectaron entidades o no hay grafo disponible)" in contexto
+    assert contexto == ""
     assert keywords == []
