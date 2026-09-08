@@ -1,20 +1,21 @@
 # Local Teacher
 
-Tutor educativo local-first basado en RAG (Retrieval-Augmented Generation).
+Tutor educativo **local-first** basado en RAG (Retrieval-Augmented Generation) con soporte GraphRAG.
 
-El sistema procesa material didáctico estructurado, indexa su contenido en bases vectoriales locales y permite realizar consultas interactivas mediante modelos LLM. El procesamiento se ejecuta en el equipo del usuario sin enviar datos a servicios externos.
+El sistema procesa material didáctico estructurado, lo indexa en bases vectoriales y de grafos locales, y responde consultas interactivas mediante LLM. Todo el procesamiento se ejecuta en tu equipo: ningún documento sale hacia servicios externos.
 
 ---
 
-## Características Principales
+## Características
 
-- **Procesamiento de Documentos con Docling**: Extracción de texto, tablas en Markdown/CSV y figuras con leyendas desde archivos PDF, DOCX, PPTX, Markdown y JSONL. Normalización de fórmulas matemáticas en dos pasadas.
-- **Búsqueda Híbrida y Reranking**: Combinación de búsqueda vectorial densa con vectores dispersos BM25 en Qdrant, refinada mediante un reranker local con **FlashRank** (`ms-marco-MiniLM-L-12-v2`).
-- **Control de Fidelidad y Abstención Segura**: Clasificador binario Self-RAG para evitar alucinaciones. Incorpora un umbral de score mínimo y mensajes de _fallback_ estandarizados para indicar explícitamente cuándo el tema consultado no está en el material.
-- **Grafo de Conocimiento (GraphRAG)**: Extracción de entidades con GLiNER y enriquecimiento conceptual con recorridos ponderados y detección de comunidades en **Memgraph MAGE**.
-- **Streaming de Respuestas**: Salida en consola progresiva (chunking artificial) para una experiencia de usuario natural y fluida mientras el LLM elabora respuestas extensas.
-- **Búsqueda Web Condicionada**: Si la información local no es suficiente, puede desencadenar consultas web a través de DuckDuckGo de manera segura (limitada a 2000 caracteres) para expandir su conocimiento.
-- **Optimización de Hardware**: Descarga automática de modelos de embeddings de la memoria tras vectorizar (`keep_alive=0`), puertos flexibles en Docker y soporte de caché semántico en Redis.
+- **Ingesta de documentos con Docling**: extracción de texto, tablas (Markdown/CSV) e imágenes con leyendas desde PDF, DOCX, PPTX, Markdown y JSONL. Normalización de fórmulas matemáticas opcional (VLM).
+- **Búsqueda híbrida y reranking**: búsqueda densa combinada con vectores dispersos BM25 en Qdrant, refinada con un reranker local (**FlashRank**, `ms-marco-MiniLM-L-12-v2`).
+- **Grafo de conocimiento (GraphRAG)**: extracción de entidades con **GLiNER**, búsqueda semántica de 2 saltos y detección de comunidades sobre **Memgraph MAGE** (Louvain).
+- **Control de fidelidad y abstención segura**: crítico interno Self-RAG (`granite3-guardian:2b`) que valida cada respuesta contra el contexto recuperado. Si el tema no está en el material, el tutor lo dice explícitamente en lugar de alucinar.
+- **Optimización de consultas**: reescritura de la pregunta con un modelo rápido auxiliar antes de la recuperación.
+- **Búsqueda web condicionada**: si la información local no basta, puede recurrir a DuckDuckGo (opcional, con filtro configurable, ej. `--web 'site:edu'`).
+- **Caché semántica en Redis**: respuestas repetidas se sirven sin re-ejecutar el pipeline.
+- **Modos de ejecución**: ajusta calidad vs. velocidad con `--mode exact | fast | ultra-fast`.
 
 ---
 
@@ -22,103 +23,111 @@ El sistema procesa material didáctico estructurado, indexa su contenido en base
 
 - Python 3.11 o superior
 - Docker y Docker Compose
-- Soporte GPU opcional para acelerar Docling y Ollama
+- GPU opcional para acelerar Docling y Ollama
 
----
+## Instalación
 
-## Instalación y Configuración
+1. Instala las dependencias:
 
-1. Instala las dependencias del proyecto:
    ```bash
    pip install -r requirements.txt
    ```
 
 2. Configura las variables de entorno:
+
    ```bash
    cp .env.example .env
    ```
 
-3. Inicia los servicios de infraestructura (Qdrant, Redis, Memgraph y Ollama):
+3. Levanta la infraestructura (Qdrant, Redis, Memgraph MAGE, Memgraph Lab y Ollama):
+
    ```bash
    docker compose up -d
    ```
-   El contenedor `ollama-init` descargará de forma automática los modelos de embeddings y generación especificados en la configuración.
+
+   El contenedor `ollama-init` descarga automáticamente los modelos de embeddings y generación definidos en la configuración. Memgraph Lab queda disponible en `http://localhost:3000` para explorar el grafo.
 
 ---
 
-## Uso de la CLI
+## Uso
 
-### Ingesta de Documentos
-Para procesar e indexar documentos ubicados en una carpeta:
+### Ingesta de documentos
+
+Procesa e indexa un archivo o carpeta (documentos + grafo de conocimiento):
 
 ```bash
-python -m local_teacher.cli \
-### 1. Ingesta de Documentos
-```bash
-python -m local_teacher.cli ingest "ruta/a/tus/documentos"
-```
-_Ejemplo:_
-```bash
-python -m local_teacher.cli ingest test_docs \
-  --mode fast \
-  --workers 4
+python -m local_teacher.cli ingest test_docs --workers 4
 ```
 
-### 2. Chat y Consultas
+### Consultas
+
 ```bash
 python -m local_teacher.cli query "¿Qué es un sistema inercial?"
 ```
 
-## Opciones y Modos de Ejecución
+### Opciones principales
 
-- `ingest <ruta>`: Ruta al archivo o carpeta a procesar.
-- `query <texto>`: Pregunta inicial para el tutor.
-- `--figuras`: Extrae imágenes y diagramas a disco en formato PNG.
-- `--tablas`: Extrae tablas a formatos Markdown y CSV.
-- `--no-formulas`: Omite el modelo de enriquecimiento de fórmulas para acelerar la carga.
-- `--recreate`: Recrea la colección en Qdrant desde cero.
-- `--graph`: Genera el Grafo de Conocimiento a partir de los documentos.
-- `--web-fallback`: Habilita búsqueda en internet si la información no existe localmente.
-- `--provider <nombre>`: Proveedor LLM (`ollama`, `openai`).
-- `--ollama-llm <modelo>`: Nombre del modelo de generación (por defecto `deepseek-r1:8b` o `llama3.2`).
-- `--ollama-embed <modelo>`: Modelo de embeddings (por defecto `nomic-embed-text`).
-- `--ollama-host <url>`: URL del servidor Ollama (por defecto definido en el entorno).
+| Flag | Descripción |
+|---|---|
+| `--mode {exact,fast,ultra-fast}` | `exact` usa `deepseek-r1:8b` + crítico, `fast` usa `llama3.2`, `ultra-fast` omite el crítico. |
+| `--no-figures` / `--no-tables` | Desactiva la extracción de imágenes o tablas (activadas por defecto). |
+| `--with-formulas` | Habilita el modelo VLM de Docling para fórmulas (más lento). |
+| `--no-graph` | Omite la construcción del grafo de conocimiento. |
+| `--no-critic` | Desactiva el supervisor Self-RAG. |
+| `--no-cache` | Ignora la caché semántica de Redis y recalcula la respuesta. |
+| `--web [filtro]` | Habilita búsqueda web opcional, p. ej. `--web 'site:edu'`. |
+| `--recreate` | Recrea la colección en Qdrant desde cero. |
+| `--workers N` | Procesos concurrentes para la extracción de documentos. |
+| `--provider` | Proveedor LLM (`ollama`, `openai`). |
+| `--embed-provider` | Motor de embeddings: `fastembed` (ONNX, por defecto) u `ollama`. |
+| `--ollama-llm` / `--ollama-critic-llm` / `--ollama-fast-llm` | Modelos de generación, crítico y optimización de consultas. |
+| `--ollama-host` | URL del servidor Ollama. |
 
 ---
 
-## Pruebas Automatizadas y Benchmarks
+## Pruebas y evaluaciones
 
-### Tests Unitarios
-Ejecuta la suite de pruebas unitarias e integración con `pytest`:
+### Tests unitarios
 
 ```bash
 pytest tests/
 ```
 
-### Evaluaciones de Fidelidad (Groundedness)
-Los scripts para probar las métricas de respuesta del modelo se encuentran en la carpeta `evals/`.
-Por ejemplo, para evaluar al supervisor interno:
+### Evaluaciones de fidelidad (groundedness)
+
+Los scripts de benchmark y evaluación están en `evals/`. Por ejemplo, para evaluar al crítico interno:
+
 ```bash
 python evals/eval_guardian.py --limit 3
 ```
 
 ---
 
-## Estructura del Código
+## Arquitectura
 
 ```text
 local-teacher/
 ├── local_teacher/
-│   ├── ingestion/       # Loader (Docling), Chunker y Graph Builder
-│   ├── query/           # Retriever, Optimizer, Critic y Tutor (Pipeline principal)
+│   ├── ingestion/       # Loaders (Docling), Chunker y Graph Builder (GLiNER)
+│   ├── query/           # Pipeline RAG: Retriever, Optimizer, Critic, Graph Search y Tutor
+│   ├── graph/           # Cliente de Memgraph (MAGE / Louvain)
 │   ├── storage/         # Qdrant Store y Redis Cache
-│   ├── factory.py       # Configuración de LLM y Embeddings
-│   ├── metadata.py      # Definición de tipos de metadatos
-│   └── cli.py           # Interfaz de línea de comandos interactiva
+│   ├── factory.py       # Configuración de LLM y embeddings
+│   ├── metadata.py      # Tipos de metadatos
+│   ├── metrics.py       # Métricas del pipeline
+│   ├── repl.py          # Sesión interactiva de chat
+│   └── cli.py           # Interfaz de línea de comandos
 ├── docs/                # Documentación técnica y guías
-├── evals/               # Scripts de benchmarking y evaluación de fidelidad
+├── evals/               # Benchmarks y evaluación de fidelidad
 ├── tests/               # Suite de tests con pytest
-├── docker-compose.yml   # Orquestación de Qdrant, Redis y Ollama
-├── requirements.txt     # Dependencias de Python
-└── README.md            # Este documento
+├── docker-compose.yml   # Qdrant, Redis, Memgraph MAGE, Memgraph Lab y Ollama
+└── requirements.txt     # Dependencias de Python
 ```
+
+### Flujo de una consulta
+
+1. **Optimización**: un modelo rápido reescribe la pregunta del usuario.
+2. **Recuperación híbrida**: búsqueda densa + BM25 en Qdrant, más búsqueda semántica de 2 saltos en el grafo de conocimiento.
+3. **Reranking**: FlashRank reordena los candidatos.
+4. **Generación**: el LLM principal responde con streaming.
+5. **Crítica**: el supervisor Self-RAG valida la respuesta contra el contexto; si no es fiel o el tema no existe en el material, se abstiene con un mensaje de fallback.
