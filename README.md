@@ -115,7 +115,8 @@ local-teacher/
 │   ├── factory.py       # Configuración de LLM y embeddings
 │   ├── metadata.py      # Tipos de metadatos
 │   ├── metrics.py       # Métricas del pipeline
-│   ├── repl.py          # Sesión interactiva de chat
+│   ├── app.py           # Orquestador de ingesta y consultas
+│   ├── repl.py          # Bucle de chat interactivo (preguntas de seguimiento)
 │   └── cli.py           # Interfaz de línea de comandos
 ├── docs/                # Documentación técnica y guías
 ├── evals/               # Benchmarks y evaluación de fidelidad
