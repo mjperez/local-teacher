@@ -24,12 +24,15 @@ STOP_WORDS_GENERIC = {
 def _is_valid_entity(text: str) -> bool:
     """Filtra entidades que son demasiado genéricas o cortas."""
     text_clean = text.lower().strip()
-    if len(text_clean) <= 2:
+    if len(text_clean) <= 2 or len(text_clean) > 45:
         return False
     if text_clean in STOP_WORDS_GENERIC:
         return False
     # Rechazar si es solo un número
     if text_clean.isnumeric():
+        return False
+    # Rechazar si tiene demasiadas palabras (más de 4 suele ser una oración, no una entidad)
+    if len(text_clean.split()) > 4:
         return False
     return True
 
@@ -120,11 +123,11 @@ def build_knowledge_graph(
 
         try:
             if hasattr(model, "batch_predict_entities"):
-                all_entities = model.batch_predict_entities(batch_texts, labels, threshold=0.5)
+                all_entities = model.batch_predict_entities(batch_texts, labels, threshold=0.75)
             elif hasattr(model, "inference"):
-                all_entities = model.inference(batch_texts, labels, threshold=0.5)
+                all_entities = model.inference(batch_texts, labels, threshold=0.75)
             elif hasattr(model, "predict_entities"):
-                all_entities = [model.predict_entities(text, labels, threshold=0.5) for text in batch_texts]
+                all_entities = [model.predict_entities(text, labels, threshold=0.75) for text in batch_texts]
             else:
                 _log.error("GLiNER model no soporta extracción de entidades.")
                 continue
